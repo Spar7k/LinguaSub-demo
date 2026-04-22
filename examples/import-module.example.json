@@ -1,0 +1,65 @@
+{
+  "subtitleImportRequest": {
+    "path": "D:/codetest/LinguaSub/examples/demo-import.srt"
+  },
+  "subtitleImportResponse": {
+    "currentFile": {
+      "path": "D:/codetest/LinguaSub/examples/demo-import.srt",
+      "name": "demo-import.srt",
+      "mediaType": "subtitle",
+      "extension": ".srt",
+      "requiresAsr": false
+    },
+    "projectState": {
+      "currentFile": {
+        "path": "D:/codetest/LinguaSub/examples/demo-import.srt",
+        "name": "demo-import.srt",
+        "mediaType": "subtitle",
+        "extension": ".srt",
+        "requiresAsr": false
+      },
+      "segments": [],
+      "status": "translating",
+      "error": null
+    },
+    "workflow": ["SRT", "Translation", "Export"],
+    "route": "translation",
+    "shouldSkipTranscription": true,
+    "recognitionInput": null,
+    "subtitleInput": {
+      "subtitlePath": "D:/codetest/LinguaSub/examples/demo-import.srt",
+      "parser": "srt",
+      "encoding": "utf-8"
+    }
+  },
+  "videoImportResponse": {
+    "currentFile": {
+      "path": "D:/media/demo.mp4",
+      "name": "demo.mp4",
+      "mediaType": "video",
+      "extension": ".mp4",
+      "requiresAsr": true
+    },
+    "projectState": {
+      "currentFile": {
+        "path": "D:/media/demo.mp4",
+        "name": "demo.mp4",
+        "mediaType": "video",
+        "extension": ".mp4",
+        "requiresAsr": true
+      },
+      "segments": [],
+      "status": "transcribing",
+      "error": null
+    },
+    "workflow": ["Video", "Recognition", "Translation", "Export"],
+    "route": "recognition",
+    "shouldSkipTranscription": false,
+    "recognitionInput": {
+      "mediaPath": "D:/media/demo.mp4",
+      "mediaType": "video",
+      "sourceLanguage": "auto"
+    },
+    "subtitleInput": null
+  }
+}

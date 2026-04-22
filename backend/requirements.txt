@@ -1,0 +1,8 @@
+# Core runtime dependency for local speech recognition in Step 6.
+faster-whisper
+
+# Realtime websocket providers such as Baidu realtime ASR.
+websocket-client
+
+# FFmpeg is also required. Development mode may use a local install, while
+# Windows release builds bundle ffmpeg.exe inside the app runtime resources.

@@ -1,0 +1,33 @@
+{
+  "request": {
+    "path": "D:/videos/interview.mp4",
+    "language": null,
+    "modelSize": "small"
+  },
+  "response": {
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 1840,
+        "sourceText": "Hello everyone, welcome to LinguaSub.",
+        "translatedText": "",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 1960,
+        "end": 4100,
+        "sourceText": "Today we will create bilingual subtitles.",
+        "translatedText": "",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "count": 2,
+    "sourceLanguage": "en",
+    "modelSize": "small",
+    "status": "done"
+  }
+}

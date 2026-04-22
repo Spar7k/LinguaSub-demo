@@ -1,0 +1,74 @@
+{
+  "request": {
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 2100,
+        "sourceText": "Hello, everyone.",
+        "translatedText": "",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 2100,
+        "end": 5200,
+        "sourceText": "Welcome to LinguaSub.",
+        "translatedText": "",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "config": {
+      "apiProviders": [
+        {
+          "provider": "openaiCompatible",
+          "displayName": "OpenAI Compatible",
+          "apiKey": "sk-example-openai",
+          "baseUrl": "https://api.openai.com/v1",
+          "model": "gpt-4.1-mini",
+          "enabled": true
+        },
+        {
+          "provider": "deepseek",
+          "displayName": "DeepSeek",
+          "apiKey": "sk-example-deepseek",
+          "baseUrl": "https://api.deepseek.com/v1",
+          "model": "deepseek-chat",
+          "enabled": true
+        }
+      ],
+      "defaultProvider": "openaiCompatible",
+      "apiKey": "sk-example-openai",
+      "baseUrl": "https://api.openai.com/v1",
+      "model": "gpt-4.1-mini",
+      "outputMode": "bilingual"
+    }
+  },
+  "response": {
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 2100,
+        "sourceText": "Hello, everyone.",
+        "translatedText": "大家好。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 2100,
+        "end": 5200,
+        "sourceText": "Welcome to LinguaSub.",
+        "translatedText": "欢迎使用 LinguaSub。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "provider": "openaiCompatible",
+    "model": "gpt-4.1-mini",
+    "status": "done"
+  }
+}

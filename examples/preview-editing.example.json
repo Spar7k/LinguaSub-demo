@@ -1,0 +1,53 @@
+{
+  "beforeEdit": {
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 1840,
+        "sourceText": "Hello everyone, welcome to LinguaSub.",
+        "translatedText": "[CN] Hello everyone, welcome to LinguaSub.",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 1960,
+        "end": 4100,
+        "sourceText": "Today we will create bilingual subtitles.",
+        "translatedText": "[CN] Today we will create bilingual subtitles.",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ]
+  },
+  "afterManualEdit": {
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 1840,
+        "sourceText": "Hello everyone, welcome back to LinguaSub.",
+        "translatedText": "[CN] Hello everyone, welcome back to LinguaSub.",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "hasUnsavedChanges": true
+  },
+  "afterSingleRetranslate": {
+    "updatedSegment": {
+      "id": "seg-001",
+      "start": 0,
+      "end": 1840,
+      "sourceText": "Hello everyone, welcome back to LinguaSub.",
+      "translatedText": "[CN] Welcome back to LinguaSub.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    }
+  },
+  "afterSave": {
+    "hasUnsavedChanges": false,
+    "lastSavedAt": "10:28:14"
+  }
+}

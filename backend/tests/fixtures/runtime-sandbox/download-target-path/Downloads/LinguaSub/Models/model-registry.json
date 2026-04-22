@@ -1,0 +1,11 @@
+{
+  "schema": "linguasub/speech-model-manifest/v1",
+  "version": 1,
+  "app": "LinguaSub",
+  "appId": "com.linguasub.desktop",
+  "kind": "speech-model-manifest",
+  "rootPath": "D:\\codetest\\LinguaSub\\backend\\tests\\fixtures\\runtime-sandbox\\download-target-path\\Downloads\\LinguaSub\\Models",
+  "modelPaths": {
+    "small": "D:\\codetest\\LinguaSub\\backend\\tests\\fixtures\\runtime-sandbox\\download-target-path\\Downloads\\LinguaSub\\Models\\small"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "parseRequest": {
+    "path": "D:/codetest/LinguaSub/examples/demo-import.srt",
+    "sourceLanguage": "en",
+    "targetLanguage": "zh-CN"
+  },
+  "parseResponse": {
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 2000,
+        "sourceText": "Hello, everyone.",
+        "translatedText": "",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 2000,
+        "end": 4500,
+        "sourceText": "Welcome to LinguaSub.",
+        "translatedText": "",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "count": 2
+  },
+  "generateRequest": {
+    "bilingual": true,
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 2000,
+        "sourceText": "Hello, everyone.",
+        "translatedText": "大家好。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 2000,
+        "end": 4500,
+        "sourceText": "Welcome to LinguaSub.",
+        "translatedText": "欢迎使用 LinguaSub。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ]
+  },
+  "generateResponse": {
+    "content": "1\n00:00:00,000 --> 00:00:02,000\nHello, everyone.\n大家好。\n\n2\n00:00:02,000 --> 00:00:04,500\nWelcome to LinguaSub.\n欢迎使用 LinguaSub。\n",
+    "count": 2,
+    "bilingual": true
+  }
+}

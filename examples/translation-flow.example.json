@@ -1,0 +1,78 @@
+{
+  "srtRoute": {
+    "importResult": {
+      "route": "translation",
+      "currentFile": {
+        "path": "D:/codetest/LinguaSub/examples/demo-import.srt",
+        "name": "demo-import.srt",
+        "mediaType": "subtitle",
+        "extension": ".srt",
+        "requiresAsr": false
+      }
+    },
+    "preparedSegments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 2000,
+        "sourceText": "Hello, everyone.",
+        "translatedText": "",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "translatedSegments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 2000,
+        "sourceText": "Hello, everyone.",
+        "translatedText": "[CN] Hello, everyone.",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "projectStateAfterTranslation": {
+      "status": "done",
+      "error": null
+    }
+  },
+  "mediaRoute": {
+    "importResult": {
+      "route": "recognition",
+      "currentFile": {
+        "path": "D:/videos/interview.mp4",
+        "name": "interview.mp4",
+        "mediaType": "video",
+        "extension": ".mp4",
+        "requiresAsr": true
+      }
+    },
+    "recognitionSegments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 1840,
+        "sourceText": "Hello everyone, welcome to LinguaSub.",
+        "translatedText": "",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "translatedSegments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 1840,
+        "sourceText": "Hello everyone, welcome to LinguaSub.",
+        "translatedText": "[CN] Hello everyone, welcome to LinguaSub.",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "projectStateAfterTranslation": {
+      "status": "done",
+      "error": null
+    }
+  }
+}

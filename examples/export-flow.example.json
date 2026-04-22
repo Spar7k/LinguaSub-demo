@@ -1,0 +1,65 @@
+{
+  "projectStateSnapshot": {
+    "currentFile": {
+      "path": "D:\\codetest\\LinguaSub\\examples\\demo-import.srt",
+      "name": "demo-import.srt",
+      "mediaType": "subtitle",
+      "extension": ".srt",
+      "requiresAsr": false
+    },
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 1000,
+        "end": 3000,
+        "sourceText": "Hello there.",
+        "translatedText": "你好。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 3500,
+        "end": 5200,
+        "sourceText": "Welcome to LinguaSub.",
+        "translatedText": "欢迎使用 LinguaSub。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "status": "done",
+    "error": null
+  },
+  "exportRequest": {
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 1000,
+        "end": 3000,
+        "sourceText": "Hello there.",
+        "translatedText": "你好。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 3500,
+        "end": 5200,
+        "sourceText": "Welcome to LinguaSub.",
+        "translatedText": "欢迎使用 LinguaSub。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "bilingual": true,
+    "sourceFilePath": "D:\\codetest\\LinguaSub\\examples\\demo-import.srt",
+    "fileName": "demo-export"
+  },
+  "exportResponse": {
+    "path": "D:\\codetest\\LinguaSub\\examples\\demo-export.srt",
+    "fileName": "demo-export.srt",
+    "bilingual": true,
+    "count": 2,
+    "status": "done"
+  }
+}

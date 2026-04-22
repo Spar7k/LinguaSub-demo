@@ -1,0 +1,34 @@
+{
+  "apiProviders": [
+    {
+      "provider": "openaiCompatible",
+      "displayName": "OpenAI Compatible",
+      "apiKey": "",
+      "baseUrl": "https://api.openai.com/v1",
+      "model": "gpt-4.1-mini",
+      "enabled": true
+    },
+    {
+      "provider": "deepseek",
+      "displayName": "DeepSeek",
+      "apiKey": "",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "model": "deepseek-chat",
+      "enabled": true
+    }
+  ],
+  "defaultProvider": "openaiCompatible",
+  "defaultTranscriptionProvider": "openaiSpeech",
+  "apiKey": "",
+  "baseUrl": "https://api.openai.com/v1",
+  "model": "gpt-4.1-mini",
+  "speechApiKey": "",
+  "speechBaseUrl": "https://api.openai.com/v1",
+  "speechModel": "whisper-1",
+  "outputMode": "bilingual",
+  "modelStoragePath": "",
+  "managedModelRoots": [],
+  "managedModelPaths": [
+    "D:\\codetest\\LinguaSub\\backend\\tests\\fixtures\\runtime-sandbox\\cleanup-protected\\UserFolder\\small"
+  ]
+}

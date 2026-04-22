@@ -1,0 +1,10 @@
+{
+  "schema": "linguasub/speech-model-root/v1",
+  "version": 1,
+  "app": "LinguaSub",
+  "appId": "com.linguasub.desktop",
+  "kind": "speech-model-root",
+  "rootPath": "D:\\codetest\\LinguaSub\\backend\\tests\\fixtures\\runtime-sandbox\\download-registers-model\\PortableModels\\LinguaSub\\Models",
+  "storageKind": "custom",
+  "manifestFile": "model-registry.json"
+}

@@ -1,0 +1,94 @@
+{
+  "subtitleSegment": {
+    "id": "seg-001",
+    "start": 0,
+    "end": 2430,
+    "sourceText": "Hello, everyone.",
+    "translatedText": "大家好。",
+    "sourceLanguage": "en",
+    "targetLanguage": "zh-CN"
+  },
+  "appConfig": {
+    "apiProviders": [
+      {
+        "provider": "openaiCompatible",
+        "displayName": "OpenAI Compatible",
+        "apiKey": "sk-example-openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-4.1-mini",
+        "enabled": true
+      },
+      {
+        "provider": "deepseek",
+        "displayName": "DeepSeek",
+        "apiKey": "sk-example-deepseek",
+        "baseUrl": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "enabled": true
+      }
+    ],
+    "defaultProvider": "openaiCompatible",
+    "apiKey": "sk-example-openai",
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4.1-mini",
+    "outputMode": "bilingual"
+  },
+  "translationTask": {
+    "provider": "openaiCompatible",
+    "model": "gpt-4.1-mini",
+    "sourceLanguage": "en",
+    "targetLanguage": "zh-CN",
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 2430,
+        "sourceText": "Hello, everyone.",
+        "translatedText": "大家好。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 2430,
+        "end": 4980,
+        "sourceText": "Today we will learn how subtitles are made.",
+        "translatedText": "今天我们来看看字幕是怎么生成的。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "status": "translating"
+  },
+  "projectState": {
+    "currentFile": {
+      "path": "D:/media/demo.mp4",
+      "name": "demo.mp4",
+      "mediaType": "video",
+      "extension": ".mp4",
+      "requiresAsr": true
+    },
+    "segments": [
+      {
+        "id": "seg-001",
+        "start": 0,
+        "end": 2430,
+        "sourceText": "Hello, everyone.",
+        "translatedText": "大家好。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      },
+      {
+        "id": "seg-002",
+        "start": 2430,
+        "end": 4980,
+        "sourceText": "Today we will learn how subtitles are made.",
+        "translatedText": "今天我们来看看字幕是怎么生成的。",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh-CN"
+      }
+    ],
+    "status": "translating",
+    "error": null
+  }
+}
