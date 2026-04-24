@@ -49,6 +49,14 @@ from .translation_service import (
     translate_segments,
     validate_translation_config,
 )
+from .video_subtitle_service import (
+    VideoSubtitleServiceError,
+    run_video_subtitle,
+)
+from .video_burn_export_service import (
+    VideoBurnExportServiceError,
+    burn_video_subtitles,
+)
 from .task_history_service import (
     TaskHistoryError,
     load_task_history,
@@ -146,6 +154,14 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
 
             if self.path == "/transcribe":
                 self._handle_transcribe()
+                return
+
+            if self.path == "/video-subtitle/run":
+                self._handle_video_subtitle_run()
+                return
+
+            if self.path == "/video-subtitle/export-video":
+                self._handle_video_subtitle_export_video()
                 return
 
             if self.path == "/speech/models/download":
@@ -351,6 +367,9 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
         except SpeechModelNotDownloadedError as exc:
             self._send_error_json(HTTPStatus.PRECONDITION_FAILED, str(exc))
             return
+        except TranslationServiceError as exc:
+            self._send_error_json(HTTPStatus.BAD_GATEWAY, str(exc))
+            return
         except (CorruptedMediaError, TranscriptionServiceError) as exc:
             self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             return
@@ -372,6 +391,87 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
                 "status": "done",
             }
         )
+
+    def _handle_video_subtitle_run(self) -> None:
+        try:
+            payload = self._read_json_body()
+            video_path = str(payload.get("videoPath", "") or "")
+            subtitle_path = str(payload.get("subtitlePath", "") or "")
+            source_language = str(payload.get("sourceLanguage", "") or "")
+            output_mode = str(payload.get("outputMode", "") or "")
+            config_payload = payload.get("config")
+            config = AppConfig.from_dict(config_payload) if isinstance(config_payload, dict) else None
+            result = run_video_subtitle(
+                video_path=video_path,
+                subtitle_path=subtitle_path,
+                source_language=source_language,
+                output_mode=output_mode,
+                config=config,
+            )
+        except UnsupportedTranscriptionMediaError as exc:
+            self._send_error_json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, str(exc))
+            return
+        except VideoSubtitleServiceError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        except CloudTranscriptionConfigError as exc:
+            self._send_error_json(HTTPStatus.PRECONDITION_FAILED, str(exc))
+            return
+        except CloudTranscriptionFileTooLargeError as exc:
+            self._send_error_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, str(exc))
+            return
+        except CloudTranscriptionApiError as exc:
+            self._send_error_json(HTTPStatus.BAD_GATEWAY, str(exc))
+            return
+        except (FfmpegNotFoundError, FasterWhisperNotInstalledError) as exc:
+            self._send_error_json(HTTPStatus.SERVICE_UNAVAILABLE, str(exc))
+            return
+        except SpeechModelNotDownloadedError as exc:
+            self._send_error_json(HTTPStatus.PRECONDITION_FAILED, str(exc))
+            return
+        except TranslationServiceError as exc:
+            self._send_error_json(HTTPStatus.BAD_GATEWAY, str(exc))
+            return
+        except (CorruptedMediaError, TranscriptionServiceError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        except (KeyError, TypeError, ValueError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+
+        self._send_json(
+            {
+                "currentFile": result.currentFile.to_dict(),
+                "segments": [segment.to_dict() for segment in result.segments],
+                "count": result.count,
+                "sourceLanguage": result.sourceLanguage,
+                "outputMode": result.outputMode,
+                "pipeline": result.pipeline,
+                "status": result.status,
+                "diagnostics": result.diagnostics.to_dict(),
+            }
+        )
+
+    def _handle_video_subtitle_export_video(self) -> None:
+        try:
+            payload = self._read_json_body()
+            segments = [
+                SubtitleSegment.from_dict(item) for item in payload.get("segments", [])
+            ]
+            result = burn_video_subtitles(
+                video_path=str(payload.get("videoPath", "") or ""),
+                output_path=str(payload.get("outputPath", "") or ""),
+                segments=segments,
+                mode=str(payload.get("mode", "bilingual") or "bilingual"),
+            )
+        except VideoBurnExportServiceError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        except (KeyError, TypeError, ValueError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+
+        self._send_json(result.to_dict())
 
     def _handle_speech_model_download(self) -> None:
         try:
@@ -487,6 +587,32 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
             word_mode = str(payload.get("wordMode", "bilingualTable"))
             source_file_path = payload.get("sourceFilePath")
             file_name = payload.get("fileName")
+            first_segment = segments[0] if segments else None
+            last_segment = segments[-1] if segments else None
+            max_end = max(
+                (
+                    segment.end
+                    for segment in segments
+                    if isinstance(segment.end, (int, float))
+                ),
+                default=None,
+            )
+            print(
+                "[LinguaSub][ExportDebug][server] "
+                f"format={export_format} "
+                f"bilingual={bilingual} "
+                f"word_mode={word_mode if export_format == 'word' else 'n/a'} "
+                f"segment_count={len(segments)} "
+                f"first_segment="
+                f"{first_segment.id if first_segment else 'none'}@"
+                f"{first_segment.start if first_segment else 'n/a'}->"
+                f"{first_segment.end if first_segment else 'n/a'} "
+                f"last_segment="
+                f"{last_segment.id if last_segment else 'none'}@"
+                f"{last_segment.start if last_segment else 'n/a'}->"
+                f"{last_segment.end if last_segment else 'n/a'} "
+                f"max_end={max_end if max_end is not None else 'n/a'}"
+            )
             result = export_subtitles(
                 segments=segments,
                 export_format=export_format,

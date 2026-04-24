@@ -1,5 +1,6 @@
 export type SidebarItemKey =
   | 'import'
+  | 'videoSubtitle'
   | 'recognition'
   | 'translation'
   | 'preview'
@@ -28,6 +29,7 @@ export type HeaderMetric = {
 
 export const sidebarItemKeys: SidebarItemKey[] = [
   'import',
+  'videoSubtitle',
   'recognition',
   'translation',
   'preview',

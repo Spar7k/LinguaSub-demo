@@ -28,9 +28,11 @@ class ExportServiceTests(unittest.TestCase):
             "subtitle-file.bilingual.srt",
             "subtitle-file.single.srt",
             "custom-export.srt",
+            "long-range.srt",
             "subtitle-file_bilingual.docx",
             "subtitle-file_transcript.docx",
             "custom-review.docx",
+            "long-range.docx",
             "unicode-export.docx",
             "unsafe_name_.srt",
             "unsafe_name_(1).srt",
@@ -174,6 +176,28 @@ class ExportServiceTests(unittest.TestCase):
                 source_file_path=FIXTURE_DIR / "subtitle-file.srt",
             )
 
+    def test_export_srt_preserves_timestamps_beyond_two_minutes(self) -> None:
+        result = export_srt(
+            [
+                SubtitleSegment(
+                    id="seg-004a",
+                    start=121000,
+                    end=125500,
+                    sourceText="Long tail segment.",
+                    translatedText="[CN] Long tail segment.",
+                    sourceLanguage="en",
+                    targetLanguage="zh-CN",
+                )
+            ],
+            bilingual=True,
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            file_name="long-range",
+        )
+
+        content = Path(result.path).read_text(encoding="utf-8-sig")
+        self.assertIn("00:02:01,000 --> 00:02:05,500", content)
+        self.assertIn("[CN] Long tail segment.", content)
+
     def test_export_word_writes_docx_with_bilingual_table_auto_name(self) -> None:
         result = export_word(
             [
@@ -258,6 +282,30 @@ class ExportServiceTests(unittest.TestCase):
         self.assertIn("안녕하세요", document_xml)
         self.assertIn("--", document_xml)
         self.assertIn("00:00:02.500", document_xml)
+
+    def test_export_word_preserves_timestamps_beyond_two_minutes(self) -> None:
+        result = export_word(
+            [
+                SubtitleSegment(
+                    id="seg-103a",
+                    start=121000,
+                    end=125500,
+                    sourceText="Transcript tail segment.",
+                    translatedText="[CN] Transcript tail segment.",
+                    sourceLanguage="en",
+                    targetLanguage="zh-CN",
+                )
+            ],
+            word_mode="transcript",
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            file_name="long-range",
+        )
+
+        with ZipFile(Path(result.path)) as archive:
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+
+        self.assertIn("00:02:01.000 -&gt; 00:02:05.500", document_xml)
+        self.assertIn("Transcript tail segment.", document_xml)
 
     def test_export_word_supports_transcript_mode_with_auto_name(self) -> None:
         result = export_word(

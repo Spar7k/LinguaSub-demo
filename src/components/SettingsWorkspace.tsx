@@ -10,6 +10,7 @@ import {
 } from '../types/models'
 import {
   hasUsableSpeechConfig,
+  getTranslationConfigConsistencyIssue,
   hasUsableTranslationConfig,
   isLocalSpeechProvider,
   safeTrim,
@@ -284,7 +285,13 @@ export function SettingsWorkspace({
 
   const pageBusy = isConfigLoading || isSaving
   const speechConfigured = Boolean(hasUsableSpeechConfig(draftConfig))
-  const translationConfigured = Boolean(hasUsableTranslationConfig(draftConfig))
+  const translationConsistencyIssue = useMemo(
+    () => getTranslationConfigConsistencyIssue(draftConfig),
+    [draftConfig],
+  )
+  const translationConfigured = Boolean(
+    hasUsableTranslationConfig(draftConfig) && !translationConsistencyIssue,
+  )
   const speechMissingItems = useMemo(() => getSpeechMissingItems(draftConfig), [draftConfig])
   const translationMissingItems = useMemo(
     () => getTranslationMissingItems(draftConfig),
@@ -359,6 +366,14 @@ export function SettingsWorkspace({
   }
 
   async function handleValidateTranslation() {
+    if (translationConsistencyIssue) {
+      setTranslationFeedback({
+        status: 'error',
+        message: translationConsistencyIssue,
+      })
+      return
+    }
+
     if (!translationConfigured) {
       setTranslationFeedback({
         status: 'error',
@@ -1060,7 +1075,8 @@ export function SettingsWorkspace({
               <p>
                 当前已选翻译服务商：{PROVIDER_LABELS[draftConfig.defaultProvider]}。本版本默认将原文翻译为中文。
               </p>
-              {!translationConfigured ? (
+              {translationConsistencyIssue ? <p>{translationConsistencyIssue}</p> : null}
+              {!translationConfigured && translationMissingItems.length > 0 ? (
                 <p>当前还缺：{translationMissingItems.join('、')}。</p>
               ) : null}
             </div>

@@ -5,6 +5,7 @@ import type {
   ProviderName,
   TranscriptionProviderName,
 } from '../types/models'
+import { createDefaultAppConfig } from '../types/models'
 
 function safeText(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -19,15 +20,93 @@ export function getProviderModel(config: AppConfig, providerName: ProviderName) 
   return providers.find((provider) => provider.provider === providerName) ?? null
 }
 
+function getDefaultProviderModel(providerName: ProviderName): ApiProviderConfig {
+  const defaults = createDefaultAppConfig().apiProviders
+  return (
+    defaults.find((provider) => provider.provider === providerName) ?? defaults[0]
+  )
+}
+
+function getConflictingDefaultProvider(
+  providerName: ProviderName,
+  baseUrl: string,
+  model: string,
+): ProviderName | null {
+  const normalizedBaseUrl = safeTrim(baseUrl)
+  const normalizedModel = safeTrim(model)
+  if (!normalizedBaseUrl || !normalizedModel) {
+    return null
+  }
+
+  const defaults = createDefaultAppConfig().apiProviders
+  const conflictingProvider = defaults.find(
+    (provider) =>
+      provider.provider !== providerName &&
+      safeTrim(provider.baseUrl) === normalizedBaseUrl &&
+      safeTrim(provider.model) === normalizedModel,
+  )
+
+  return conflictingProvider?.provider ?? null
+}
+
+function buildResolvedProviderModel(
+  config: AppConfig,
+  providerName: ProviderName,
+): ApiProviderConfig {
+  const defaults = getDefaultProviderModel(providerName)
+  const provider = getProviderModel(config, providerName)
+  const conflictingProvider = getConflictingDefaultProvider(
+    providerName,
+    provider?.baseUrl ?? '',
+    provider?.model ?? '',
+  )
+
+  return {
+    ...defaults,
+    ...provider,
+    apiKey: safeText(provider?.apiKey),
+    baseUrl: conflictingProvider
+      ? defaults.baseUrl
+      : safeTrim(provider?.baseUrl) || defaults.baseUrl,
+    model: conflictingProvider
+      ? defaults.model
+      : safeTrim(provider?.model) || defaults.model,
+  }
+}
+
+function upsertProviderModel(
+  config: AppConfig,
+  providerName: ProviderName,
+  nextProvider: ApiProviderConfig,
+): ApiProviderConfig[] {
+  const providers = Array.isArray(config.apiProviders) ? config.apiProviders : []
+  let matched = false
+  const nextProviders = providers.map((provider) => {
+    if (provider.provider !== providerName) {
+      return provider
+    }
+
+    matched = true
+    return { ...provider, ...nextProvider }
+  })
+
+  if (!matched) {
+    nextProviders.push(nextProvider)
+  }
+
+  return nextProviders
+}
+
 export function selectProvider(config: AppConfig, providerName: ProviderName): AppConfig {
-  const activeProvider = getProviderModel(config, providerName)
+  const activeProvider = buildResolvedProviderModel(config, providerName)
 
   return {
     ...config,
     defaultProvider: providerName,
-    apiKey: activeProvider?.apiKey ?? '',
-    baseUrl: activeProvider?.baseUrl ?? config.baseUrl,
-    model: activeProvider?.model ?? config.model,
+    apiKey: activeProvider.apiKey,
+    baseUrl: activeProvider.baseUrl,
+    model: activeProvider.model,
+    apiProviders: upsertProviderModel(config, providerName, activeProvider),
   }
 }
 
@@ -151,10 +230,35 @@ export function hasUsableTranslationConfig(config: AppConfig | null): config is 
   }
 
   return Boolean(
-    safeTrim(config.apiKey) &&
+      safeTrim(config.apiKey) &&
       safeTrim(config.baseUrl) &&
       safeTrim(config.model),
   )
+}
+
+function getProviderDisplayName(providerName: ProviderName): string {
+  return providerName === 'deepseek' ? 'DeepSeek' : 'OpenAI Compatible'
+}
+
+export function getTranslationConfigConsistencyIssue(config: AppConfig | null): string | null {
+  if (!config) {
+    return null
+  }
+
+  const conflictingProvider = getConflictingDefaultProvider(
+    config.defaultProvider,
+    config.baseUrl,
+    config.model,
+  )
+  if (!conflictingProvider) {
+    return null
+  }
+
+  return `当前翻译配置不一致：已选择 ${getProviderDisplayName(
+    config.defaultProvider,
+  )}，但当前服务地址和模型仍然像 ${getProviderDisplayName(conflictingProvider)}（${
+    safeTrim(config.baseUrl) || '未配置'
+  } / ${safeTrim(config.model) || '未配置'}）。请打开设置页，重新选择翻译服务商，或检查服务地址和模型是否与当前 provider 匹配。`
 }
 
 export function hasUsableSpeechConfig(config: AppConfig | null): config is AppConfig {

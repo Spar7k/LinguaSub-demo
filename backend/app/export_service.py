@@ -246,6 +246,43 @@ def _validate_segments(
             )
 
 
+def _log_export_segments_debug(
+    segments: list[SubtitleSegment],
+    *,
+    export_format: ExportFormat,
+    bilingual: bool,
+    word_mode: WordExportMode,
+    target_path: Path,
+) -> None:
+    first_segment = segments[0] if segments else None
+    last_segment = segments[-1] if segments else None
+    max_end = max(
+        (
+            segment.end
+            for segment in segments
+            if isinstance(segment.end, (int, float))
+        ),
+        default=None,
+    )
+    print(
+        "[LinguaSub][ExportDebug][service] "
+        f"format={export_format} "
+        f"bilingual={bilingual} "
+        f"word_mode={word_mode if export_format == 'word' else 'n/a'} "
+        f"target='{target_path.name}' "
+        f"segment_count={len(segments)} "
+        f"first_segment="
+        f"{first_segment.id if first_segment else 'none'}@"
+        f"{first_segment.start if first_segment else 'n/a'}->"
+        f"{first_segment.end if first_segment else 'n/a'} "
+        f"last_segment="
+        f"{last_segment.id if last_segment else 'none'}@"
+        f"{last_segment.start if last_segment else 'n/a'}->"
+        f"{last_segment.end if last_segment else 'n/a'} "
+        f"max_end={max_end if max_end is not None else 'n/a'}"
+    )
+
+
 def export_subtitles(
     segments: list[SubtitleSegment],
     *,
@@ -266,6 +303,13 @@ def export_subtitles(
         bilingual=bilingual,
         word_mode=normalized_word_mode,
         file_name=file_name,
+    )
+    _log_export_segments_debug(
+        segments,
+        export_format=normalized_format,
+        bilingual=bilingual,
+        word_mode=normalized_word_mode,
+        target_path=export_path,
     )
 
     try:

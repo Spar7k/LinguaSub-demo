@@ -22,6 +22,7 @@ from backend.app.speech_runtime_service import (
     get_model_download_dir,
     register_model_path,
     resolve_ffmpeg_binary,
+    resolve_ffprobe_binary,
     resolve_installed_model_path,
     validate_model_storage_directory,
     verify_model_directory,
@@ -107,6 +108,55 @@ class SpeechRuntimeServiceTests(unittest.TestCase):
             resolved = resolve_ffmpeg_binary()
 
         self.assertEqual(resolved, ffmpeg_path.resolve())
+
+    def test_resolve_ffprobe_binary_prefers_packaged_runtime_before_env_path(self) -> None:
+        sandbox = reset_sandbox("ffprobe-packaged-runtime")
+        runtime_dir = sandbox / "resources" / "runtime" / "ffmpeg"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        packaged_ffprobe_path = runtime_dir / "ffprobe.exe"
+        packaged_ffprobe_path.write_text("fake", encoding="utf-8")
+        env_ffprobe_path = sandbox / "env-ffprobe.exe"
+        env_ffprobe_path.write_text("fake-env", encoding="utf-8")
+
+        with (
+            patch.dict(
+                os.environ,
+                {"LINGUASUB_FFPROBE_PATH": str(env_ffprobe_path), "LINGUASUB_RUNTIME_DIR": ""},
+                clear=False,
+            ),
+            patch("backend.app.speech_runtime_service.Path.cwd", return_value=sandbox),
+            patch(
+                "backend.app.speech_runtime_service.sys.argv",
+                ["Z:/unexpected/linguasub-backend.exe"],
+            ),
+            patch(
+                "backend.app.speech_runtime_service.sys.executable",
+                "Z:/unexpected/linguasub-backend.exe",
+            ),
+            patch("backend.app.speech_runtime_service.shutil.which", return_value=None),
+        ):
+            resolved = resolve_ffprobe_binary()
+
+        self.assertEqual(resolved, packaged_ffprobe_path.resolve())
+
+    def test_resolve_ffprobe_binary_falls_back_to_env_path(self) -> None:
+        sandbox = reset_sandbox("ffprobe-env")
+        ffprobe_path = sandbox / "ffprobe.exe"
+        ffprobe_path.write_text("fake", encoding="utf-8")
+
+        with (
+            patch.dict(
+                os.environ,
+                {"LINGUASUB_FFPROBE_PATH": str(ffprobe_path), "LINGUASUB_RUNTIME_DIR": ""},
+                clear=False,
+            ),
+            patch("backend.app.speech_runtime_service._iter_runtime_root_candidates", return_value=[]),
+            patch("backend.app.speech_runtime_service.get_runtime_root", return_value=None),
+            patch("backend.app.speech_runtime_service.shutil.which", return_value=None),
+        ):
+            resolved = resolve_ffprobe_binary()
+
+        self.assertEqual(resolved, ffprobe_path.resolve())
 
     def test_register_model_path_and_resolve_installed_model_path(self) -> None:
         model_root = reset_sandbox("model-registry")

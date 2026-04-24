@@ -32,6 +32,7 @@ MODEL_ROOT_MARKER_FILE_NAME = ".linguasub-model-root.json"
 MODEL_STORAGE_ENV = "LINGUASUB_MODEL_DIR"
 RUNTIME_DIR_ENV = "LINGUASUB_RUNTIME_DIR"
 FFMPEG_PATH_ENV = "LINGUASUB_FFMPEG_PATH"
+FFPROBE_PATH_ENV = "LINGUASUB_FFPROBE_PATH"
 CUSTOM_MODEL_ROOT_FOLDER_NAME = "LinguaSub"
 CUSTOM_MODEL_ROOT_MODELS_FOLDER_NAME = "Models"
 MODEL_ROOT_MARKER_SCHEMA = "linguasub/speech-model-root/v1"
@@ -687,6 +688,37 @@ def resolve_ffmpeg_binary() -> Path | None:
     ffmpeg_on_path = shutil.which("ffmpeg")
     if ffmpeg_on_path:
         return Path(ffmpeg_on_path).expanduser().resolve()
+
+    return None
+
+
+def resolve_ffprobe_binary() -> Path | None:
+    for runtime_root in _iter_runtime_root_candidates():
+        bundled_binary = runtime_root / "ffmpeg" / "ffprobe.exe"
+        if bundled_binary.exists() and bundled_binary.is_file():
+            return bundled_binary.resolve()
+
+    runtime_root = get_runtime_root()
+    if runtime_root is not None:
+        direct_binary = runtime_root / "ffprobe.exe"
+        if direct_binary.exists() and direct_binary.is_file():
+            return direct_binary.resolve()
+
+    configured_binary = os.getenv(FFPROBE_PATH_ENV)
+    if configured_binary:
+        configured_path = Path(configured_binary).expanduser().resolve()
+        if configured_path.exists() and configured_path.is_file():
+            return configured_path
+
+    ffmpeg_binary = resolve_ffmpeg_binary()
+    if ffmpeg_binary is not None:
+        sibling_binary = ffmpeg_binary.with_name("ffprobe.exe")
+        if sibling_binary.exists() and sibling_binary.is_file():
+            return sibling_binary.resolve()
+
+    ffprobe_on_path = shutil.which("ffprobe")
+    if ffprobe_on_path:
+        return Path(ffprobe_on_path).expanduser().resolve()
 
     return None
 

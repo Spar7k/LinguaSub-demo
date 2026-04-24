@@ -16,6 +16,7 @@ import { Sidebar } from './components/Sidebar'
 import { SubtitlePreviewWorkspace } from './components/SubtitlePreviewWorkspace'
 import { StepHeader } from './components/StepHeader'
 import { TranslationWorkspace } from './components/TranslationWorkspace'
+import { VideoSubtitleWorkspace } from './components/VideoSubtitleWorkspace'
 import {
   sidebarItemKeys,
   type HeaderMetric,
@@ -41,10 +42,13 @@ import {
   type SpeechModelDownloadRequest,
 } from './services/environmentService'
 import { exportSubtitles } from './services/exportService'
+import { pickVideoSavePath } from './services/saveFilePickerService'
 import { loadTaskHistory, upsertTaskHistoryRecord } from './services/taskHistoryService'
 import { parseSrt } from './services/srtService'
 import { transcribeMedia } from './services/transcriptionService'
 import { requestTranslation } from './services/translationService'
+import { exportBurnedSubtitleVideo } from './services/videoBurnExportService'
+import { runVideoSubtitle } from './services/videoSubtitleService'
 import type { ExportFormat, ExportResult, WordExportMode } from './types/export'
 import type { ImportResult } from './types/import'
 import type { StartupCheckReport } from './types/environment'
@@ -65,6 +69,14 @@ import type {
   TranscriptionDiagnostics,
 } from './types/transcription'
 import type {
+  VideoSubtitleDraft,
+  VideoSubtitleRunResponse,
+} from './types/videoSubtitle'
+import type {
+  VideoBurnExportMode,
+  VideoBurnExportResult,
+} from './types/videoExport'
+import type {
   SubtitleSummary,
   TaskEngineType,
   TaskHistoryRecord,
@@ -72,6 +84,7 @@ import type {
   TaskLogLevel,
 } from './types/tasks'
 import {
+  getTranslationConfigConsistencyIssue,
   hasUsableSpeechConfig,
   hasUsableTranslationConfig,
   isCloudSpeechProvider,
@@ -83,7 +96,13 @@ import {
   updateOutputMode,
 } from './utils/config'
 
-type WorkspaceKey = 'import' | 'translation' | 'preview' | 'export' | 'settings'
+type WorkspaceKey =
+  | 'import'
+  | 'videoSubtitle'
+  | 'translation'
+  | 'preview'
+  | 'export'
+  | 'settings'
 type MainWorkspaceKey = Exclude<WorkspaceKey, 'settings'>
 
 type TranslationRunMeta = {
@@ -95,6 +114,7 @@ type TranslationRunMeta = {
 type TranscriptionRunMeta = TranscriptionDiagnostics | null
 
 type ExportRunMeta = ExportResult | null
+type VideoBurnExportRunMeta = VideoBurnExportResult | null
 type StartupCheckMeta = StartupCheckReport | null
 type PreparedSegmentsResult = {
   segments: SubtitleSegment[]
@@ -116,8 +136,76 @@ type StartTranslationOptions = {
 type RestoreTaskTarget = 'translation' | 'preview' | 'export'
 type AppNoticeTone = 'info' | 'warn'
 
+function getVideoSubtitleSidebarCopy(
+  language: ReturnType<typeof useI18n>['language'],
+): {
+  label: string
+  description: string
+} {
+  return language === 'zh'
+    ? {
+        label: '视频字幕',
+        description: '中文单语 / 英语双语',
+      }
+    : {
+        label: 'Video subtitle',
+        description: 'Chinese single / English bilingual',
+      }
+}
+
+function getVideoSubtitleWorkspaceCopy(
+  language: ReturnType<typeof useI18n>['language'],
+): WorkspaceCopy {
+  return language === 'zh'
+    ? {
+        current: 2,
+        title: '视频字幕',
+        description: '用最小链路生成与语音对齐的中文字幕，或中英字幕。',
+      }
+    : {
+        current: 2,
+        title: 'Video subtitle',
+        description: 'Generate speech-aligned Chinese or bilingual subtitles with the smallest path.',
+      }
+}
+
 function cloneSegments(segments: SubtitleSegment[]): SubtitleSegment[] {
   return segments.map((segment) => ({ ...segment }))
+}
+
+function getPathDirectory(path: string): string {
+  const separatorIndex = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))
+  return separatorIndex >= 0 ? path.slice(0, separatorIndex) : ''
+}
+
+function getPathStem(path: string): string {
+  const fileName = path.split(/[\\/]/).pop() || 'linguasub-video'
+  return fileName.replace(/\.[^/.]+$/, '') || 'linguasub-video'
+}
+
+function buildDefaultBurnedVideoFileName(videoPath: string): string {
+  return `${getPathStem(videoPath)}_subtitled.mp4`
+}
+
+function buildDefaultBurnedVideoOutputPath(videoPath: string): string {
+  const directory = getPathDirectory(videoPath)
+  const fileName = buildDefaultBurnedVideoFileName(videoPath)
+  return directory ? `${directory}\\${fileName}` : fileName
+}
+
+function getCurrentVideoPath(
+  importResult: ImportResult | null,
+  projectState: ProjectState,
+): string | null {
+  if (importResult?.currentFile.mediaType === 'video') {
+    return importResult.currentFile.path
+  }
+
+  if (projectState.currentFile?.mediaType === 'video') {
+    return projectState.currentFile.path
+  }
+
+  return null
 }
 
 function cloneProjectState(projectState: ProjectState): ProjectState {
@@ -196,8 +284,16 @@ function getSpeechProviderLabel(provider: TranscriptionProviderName): string {
   switch (provider) {
     case 'baidu_realtime':
       return 'baidu_realtime'
+    case 'baidu_file_async':
+      return 'baidu_file_async'
     case 'tencent_realtime':
       return 'tencent_realtime'
+    case 'tencent_file_async':
+      return 'tencent_file_async'
+    case 'xfyun_lfasr':
+      return 'xfyun_lfasr'
+    case 'xfyun_speed_transcription':
+      return 'xfyun_speed_transcription'
     case 'openaiSpeech':
       return 'openaiSpeech'
     default:
@@ -362,6 +458,43 @@ function formatSaveTime(date: Date): string {
   }).format(date)
 }
 
+function logExportDebugSummary(
+  segments: SubtitleSegment[],
+  format: ExportFormat,
+  outputMode: OutputMode,
+) {
+  const firstSegment = segments[0] ?? null
+  const lastSegment = segments[segments.length - 1] ?? null
+  const maxEnd = segments.reduce(
+    (currentMax, segment) =>
+      Number.isFinite(segment.end) ? Math.max(currentMax, segment.end) : currentMax,
+    Number.NEGATIVE_INFINITY,
+  )
+
+  console.info('[LinguaSub][ExportDebug][client]', {
+    format,
+    outputMode,
+    segmentCount: segments.length,
+    firstSegment: firstSegment
+      ? {
+          id: firstSegment.id,
+          start: firstSegment.start,
+          end: firstSegment.end,
+        }
+      : null,
+    lastSegment: lastSegment
+      ? {
+          id: lastSegment.id,
+          start: lastSegment.start,
+          end: lastSegment.end,
+        }
+      : null,
+    maxEnd: Number.isFinite(maxEnd) ? maxEnd : null,
+    usesProjectStateSegments: true,
+    previewFilteredSegmentsInvolved: false,
+  })
+}
+
 function getOutputModeLabel(outputMode: OutputMode, m: LanguagePack): string {
   return m.common.outputModes[outputMode]
 }
@@ -403,13 +536,21 @@ function getWorkflowLabel(workflow: string[], m: LanguagePack): string {
     .join(' -> ')
 }
 
-function getWorkspaceCopy(activeWorkspace: WorkspaceKey, m: LanguagePack): WorkspaceCopy {
+function getWorkspaceCopy(
+  activeWorkspace: WorkspaceKey,
+  language: ReturnType<typeof useI18n>['language'],
+  m: LanguagePack,
+): WorkspaceCopy {
   if (activeWorkspace === 'settings') {
     return {
       current: 6,
       title: m.app.workspace.settings.title,
       description: m.app.workspace.settings.description,
     }
+  }
+
+  if (activeWorkspace === 'videoSubtitle') {
+    return getVideoSubtitleWorkspaceCopy(language)
   }
 
   if (activeWorkspace === 'translation') {
@@ -456,6 +597,48 @@ function buildHeaderMetrics(
   language: ReturnType<typeof useI18n>['language'],
   m: LanguagePack,
 ): HeaderMetric[] {
+  if (activeWorkspace === 'videoSubtitle') {
+    return language === 'zh'
+      ? [
+          {
+            label: '当前能力',
+            value: '中文单语 / 英语双语',
+            hint: '当前只支持 中文 + 单语，或 英语 + 双语。外部字幕导入与重对齐还未接入。',
+          },
+          {
+            label: m.common.misc.provider,
+            value: config?.defaultTranscriptionProvider ?? m.common.misc.loading,
+            hint: `识别继续复用设置页；英语双语时还会继续复用当前翻译 provider：${
+              config?.defaultProvider ?? m.common.misc.loading
+            }`,
+          },
+          {
+            label: m.common.summary.nextStage,
+            value: '预览 / 导出',
+            hint: '生成完成后会直接进入现有预览页，再沿用现有导出页。',
+          },
+        ]
+      : [
+          {
+            label: 'Current capability',
+            value: 'Chinese single / English bilingual',
+            hint: 'This phase supports Chinese + single-language output, or English + bilingual output.',
+          },
+          {
+            label: m.common.misc.provider,
+            value: config?.defaultTranscriptionProvider ?? m.common.misc.loading,
+            hint: `Speech settings are reused from Settings. English bilingual runs also reuse the current translation provider: ${
+              config?.defaultProvider ?? m.common.misc.loading
+            }.`,
+          },
+          {
+            label: m.common.summary.nextStage,
+            value: 'Preview / Export',
+            hint: 'A successful run will go straight into the existing preview page.',
+          },
+        ]
+  }
+
   if (activeWorkspace === 'settings') {
     return [
       {
@@ -586,10 +769,12 @@ function buildSidebarStatus(
   processError: string | null,
   uninstallError: string | null,
   isUninstalling: boolean,
+  isWorking: boolean,
   outputMode: OutputMode,
   exportFormat: ExportFormat,
   wordExportMode: WordExportMode,
   exportResult: ExportRunMeta,
+  language: ReturnType<typeof useI18n>['language'],
   m: LanguagePack,
 ): SidebarStatus {
   if (activeWorkspace === 'settings') {
@@ -638,6 +823,84 @@ function buildSidebarStatus(
         m.settingsPage.uninstallHelper,
       ],
     }
+  }
+
+  if (activeWorkspace === 'videoSubtitle') {
+    if (configError) {
+      return {
+        label: m.common.statuses.error,
+        hint: configError,
+        points: [
+          m.app.errors.configLoadFailed,
+          m.common.buttons.reloadConfig,
+          m.common.summary.configPath,
+        ],
+      }
+    }
+
+    if (processError) {
+      return language === 'zh'
+        ? {
+            label: m.common.statuses.error,
+            hint: processError,
+            points: [
+              '当前阶段只支持 中文 + 单语，或 英语 + 双语。',
+              '请先检查视频路径、媒体环境，以及当前识别/翻译配置。',
+              '需要时先打开设置页补全相关 provider 参数。',
+            ],
+          }
+        : {
+            label: m.common.statuses.error,
+            hint: processError,
+            points: [
+              'This phase only supports Chinese + single-language output, or English + bilingual output.',
+              'Check the video path, media runtime, and the current speech / translation config.',
+              'Open Settings first if any provider still needs work.',
+            ],
+          }
+    }
+
+    if (isWorking) {
+      return language === 'zh'
+        ? {
+            label: m.common.statuses.transcribing,
+            hint: '正在处理视频字幕任务。',
+            points: [
+              '中文单语：只调用现有 transcribe_media()。',
+              '英语双语：先识别，再调用现有 translate_segments()。',
+              '成功后会直接进入预览页。',
+            ],
+          }
+        : {
+            label: m.common.statuses.transcribing,
+            hint: 'Processing the video subtitle task.',
+            points: [
+              'Chinese single-language: transcribe_media() only.',
+              'English bilingual: transcribe first, then reuse translate_segments().',
+              'A successful run will jump straight to Preview.',
+            ],
+          }
+    }
+
+    return language === 'zh'
+      ? {
+          label: m.common.statuses.idle,
+          hint: '选择视频后即可开始当前阶段的两条最小链路。',
+          points: [
+            '输入项只保留视频路径、源语言和输出模式。',
+            '当前只开放 中文 + 单语，或 英语 + 双语。',
+            '结果会继续复用现有 Preview / Export。',
+          ],
+        }
+      : {
+          label: m.common.statuses.idle,
+          hint: 'Choose a video file to start one of the MVP paths.',
+          points: [
+            'The page only keeps video path, source language, and output mode.',
+            'Only Chinese + single-language output, or English + bilingual output, is enabled.',
+            'The result will continue into the existing Preview / Export flow.',
+          ],
+        }
   }
 
   if (processError) {
@@ -736,6 +999,34 @@ function buildSidebarStatus(
   }
 
   if (projectState.status === 'done') {
+    if (isVideoSubtitleImportResult(importResult)) {
+      return language === 'zh'
+        ? {
+            label: m.common.statuses.done,
+            hint:
+              outputMode === 'bilingual'
+                ? '识别与翻译完成，已生成中英字幕。'
+                : '识别完成，已生成中文字幕。',
+            points: [
+              `${m.common.summary.translatedSegments}: ${projectState.segments.filter((segment) => segment.translatedText).length}`,
+              `${m.common.summary.outputMode}: ${getOutputModeLabel(outputMode, m)}`,
+              m.common.buttons.openExport,
+            ],
+          }
+        : {
+            label: m.common.statuses.done,
+            hint:
+              outputMode === 'bilingual'
+                ? 'Recognition and translation finished. Bilingual subtitles are ready.'
+                : 'Recognition finished. Chinese subtitles are ready.',
+            points: [
+              `${m.common.summary.translatedSegments}: ${projectState.segments.filter((segment) => segment.translatedText).length}`,
+              `${m.common.summary.outputMode}: ${getOutputModeLabel(outputMode, m)}`,
+              m.common.buttons.openExport,
+            ],
+          }
+    }
+
     return {
       label: m.common.statuses.done,
       hint: m.app.notes.previewReady,
@@ -767,11 +1058,14 @@ function buildSidebarItems(
   importResult: ImportResult | null,
   projectState: ProjectState,
   isBusy: boolean,
+  language: ReturnType<typeof useI18n>['language'],
   m: LanguagePack,
 ) {
   const activeKey =
     activeWorkspace === 'settings'
       ? 'settings'
+      : activeWorkspace === 'videoSubtitle'
+      ? 'videoSubtitle'
       : activeWorkspace === 'export'
       ? 'export'
       : activeWorkspace === 'preview'
@@ -787,17 +1081,26 @@ function buildSidebarItems(
 
   const hasImport = Boolean(importResult)
   const hasSegments = projectState.segments.length > 0
+  const videoSubtitleProject = isVideoSubtitleImportResult(importResult)
 
   return sidebarItemKeys.map((key) => ({
     key,
-    label: m.sidebar.items[key].label,
-    description: m.sidebar.items[key].description,
+    label:
+      key === 'videoSubtitle'
+        ? getVideoSubtitleSidebarCopy(language).label
+        : m.sidebar.items[key].label,
+    description:
+      key === 'videoSubtitle'
+        ? getVideoSubtitleSidebarCopy(language).description
+        : m.sidebar.items[key].description,
     active: key === activeKey,
     disabled:
       key === 'settings'
         ? isBusy
+        : key === 'videoSubtitle'
+          ? isBusy
         : key === 'translation' || key === 'recognition'
-          ? isBusy || !hasImport
+          ? isBusy || !hasImport || videoSubtitleProject
           : key === 'preview' || key === 'export'
             ? isBusy || !hasSegments
             : isBusy,
@@ -813,7 +1116,10 @@ function buildStatusHint(
   processError: string | null,
   uninstallError: string | null,
   isUninstalling: boolean,
+  isWorking: boolean,
+  outputMode: OutputMode,
   exportResult: ExportRunMeta,
+  language: ReturnType<typeof useI18n>['language'],
   m: LanguagePack,
 ): string {
   if (activeWorkspace === 'settings') {
@@ -826,6 +1132,26 @@ function buildStatusHint(
     }
 
     return isUninstalling ? m.settingsPage.uninstallingHint : m.app.hints.settingsReady
+  }
+
+  if (activeWorkspace === 'videoSubtitle') {
+    if (processError) {
+      return processError
+    }
+
+    if (configError) {
+      return configError
+    }
+
+    if (isWorking) {
+      return language === 'zh'
+        ? '正在处理视频字幕任务。'
+        : 'Processing the video subtitle task.'
+    }
+
+    return language === 'zh'
+      ? '这一页当前支持 中文 + 单语，或 英语 + 双语。'
+      : 'This page currently supports Chinese + single-language output, or English + bilingual output.'
   }
 
   if (processError) {
@@ -857,6 +1183,18 @@ function buildStatusHint(
   }
 
   if (projectState.status === 'done') {
+    if (isVideoSubtitleImportResult(importResult)) {
+      if (outputMode === 'bilingual') {
+        return language === 'zh'
+          ? '识别与翻译完成，已生成中英字幕。'
+          : 'Recognition and translation finished. Bilingual subtitles are ready.'
+      }
+
+      return language === 'zh'
+        ? '识别完成，已生成中文字幕。'
+        : 'Recognition finished. Chinese subtitles are ready.'
+    }
+
     return m.app.hints.translationDone
   }
 
@@ -868,6 +1206,10 @@ function buildActionBarNote(
   importResult: ImportResult | null,
   m: LanguagePack,
 ): string {
+  if (activeWorkspace === 'videoSubtitle') {
+    return '当前阶段支持两条链路：中文视频 -> 中文字幕，或 英语视频 -> 中英字幕。成功后都会直接进入预览页。'
+  }
+
   if (activeWorkspace === 'settings') {
     return m.app.notes.settingsReady
   }
@@ -910,6 +1252,7 @@ function getWorkspaceFromSidebarKey(key: SidebarItemKey): WorkspaceKey {
 function isWorkspaceKey(value: string): value is WorkspaceKey {
   return (
     value === 'import' ||
+    value === 'videoSubtitle' ||
     value === 'translation' ||
     value === 'preview' ||
     value === 'export' ||
@@ -1059,6 +1402,50 @@ async function prepareSegmentsForTranslation(
   }
 }
 
+function buildVideoSubtitleImportResult(
+  response: VideoSubtitleRunResponse,
+  subtitlePath: string | null = null,
+): ImportResult {
+  return {
+    currentFile: { ...response.currentFile },
+    projectState: {
+      currentFile: { ...response.currentFile },
+      segments: cloneSegments(response.segments),
+      status: 'done',
+      error: null,
+    },
+    workflow: ['Video', 'Recognition', 'Export'],
+    route: 'recognition',
+    shouldSkipTranscription: false,
+    recognitionInput: {
+      mediaPath: response.currentFile.path,
+      mediaType: 'video',
+      sourceLanguage: response.sourceLanguage,
+    },
+    subtitleInput: subtitlePath
+      ? {
+          subtitlePath,
+          parser: 'srt',
+          encoding: 'auto',
+        }
+      : null,
+  }
+}
+
+function isVideoSubtitleImportResult(importResult: ImportResult | null): boolean {
+  if (!importResult) {
+    return false
+  }
+
+  return (
+    importResult.route === 'recognition' &&
+    importResult.workflow.length === 3 &&
+    importResult.workflow[0] === 'Video' &&
+    importResult.workflow[1] === 'Recognition' &&
+    importResult.workflow[2] === 'Export'
+  )
+}
+
 function App() {
   const { m, language } = useI18n()
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('import')
@@ -1074,6 +1461,10 @@ function App() {
   const [transcriptionRun, setTranscriptionRun] = useState<TranscriptionRunMeta>(null)
   const [translationRun, setTranslationRun] = useState<TranslationRunMeta>(null)
   const [exportResult, setExportResult] = useState<ExportRunMeta>(null)
+  const [videoBurnExportResult, setVideoBurnExportResult] =
+    useState<VideoBurnExportRunMeta>(null)
+  const [videoBurnMode, setVideoBurnMode] = useState<VideoBurnExportMode>('bilingual')
+  const [isVideoBurnExporting, setIsVideoBurnExporting] = useState(false)
   const [startupCheck, setStartupCheck] = useState<StartupCheckMeta>(null)
   const [startupCheckError, setStartupCheckError] = useState<string | null>(null)
   const [isStartupCheckLoading, setIsStartupCheckLoading] = useState(true)
@@ -1088,6 +1479,12 @@ function App() {
   const [selectedAsrQualityPreset, setSelectedAsrQualityPreset] =
     useState<AsrQualityPreset>('balanced')
   const [isModelDownloadStarting, setIsModelDownloadStarting] = useState(false)
+  const [videoSubtitleDraft, setVideoSubtitleDraft] = useState<VideoSubtitleDraft>({
+    videoPath: '',
+    subtitlePath: '',
+    sourceLanguage: 'zh',
+    outputMode: 'single',
+  })
   const [fallbackOutputMode, setFallbackOutputMode] = useState<OutputMode>('bilingual')
   const [selectedExportFormat, setSelectedExportFormat] = useState<ExportFormat>('srt')
   const [selectedWordExportMode, setSelectedWordExportMode] =
@@ -1404,6 +1801,7 @@ function App() {
       setImportError(null)
       setProcessError(options?.processErrorOverride ?? null)
       setExportResult(null)
+      setVideoBurnExportResult(null)
       setExportFileName('')
       setSavedSegmentsSnapshot(cloneSegments(restoredProject.segments))
       setLastSavedAt(task.updatedAt ? formatSaveTime(new Date(task.updatedAt)) : null)
@@ -1526,6 +1924,7 @@ function App() {
       setTranscriptionRun(null)
       setTranslationRun(null)
       setExportResult(null)
+      setVideoBurnExportResult(null)
       setExportFileName('')
       setSavedSegmentsSnapshot(cloneSegments(result.projectState.segments))
       setLastSavedAt(null)
@@ -1551,6 +1950,7 @@ function App() {
         setTranscriptionRun(null)
         setTranslationRun(null)
         setExportResult(null)
+        setVideoBurnExportResult(null)
         setExportFileName('')
         setSavedSegmentsSnapshot([])
         setLastSavedAt(null)
@@ -1558,6 +1958,114 @@ function App() {
         setActiveWorkspace('import')
       }
     })
+  }
+
+  async function handleStartVideoSubtitle() {
+    if (!config) {
+      setProcessError('当前识别配置尚未加载完成，请稍后再试。')
+      return
+    }
+
+    const isChineseSingle =
+      videoSubtitleDraft.sourceLanguage === 'zh' &&
+      videoSubtitleDraft.outputMode === 'single'
+    const isEnglishBilingual =
+      videoSubtitleDraft.sourceLanguage === 'en' &&
+      videoSubtitleDraft.outputMode === 'bilingual'
+    const subtitlePathForRun = isEnglishBilingual ? videoSubtitleDraft.subtitlePath : ''
+
+    if (!isChineseSingle && !isEnglishBilingual) {
+      setProcessError('当前只支持 中文 + 单语，或 英语 + 双语。')
+      return
+    }
+
+    if (subtitlePathForRun.trim() && !subtitlePathForRun.trim().toLowerCase().endsWith('.srt')) {
+      setProcessError('当前导入字幕分支只支持英文 SRT。请填写 .srt 路径，或清空该输入框继续走英语双语链路。')
+      return
+    }
+
+    const usingLocalProvider = isLocalSpeechProvider(config.defaultTranscriptionProvider)
+    const speechReady =
+      hasUsableSpeechConfig(config) &&
+      (usingLocalProvider ? startupCheck?.readyForLocalTranscription ?? false : true)
+
+    if (usingLocalProvider && !(startupCheck?.readyForMediaWorkflow ?? false)) {
+      setProcessError('当前媒体工作流未就绪，请先确认 FFmpeg 和识别环境可用。')
+      return
+    }
+
+    if (!speechReady) {
+      setProcessError('当前识别配置不可用，请先到设置页补全识别 provider 所需参数。')
+      return
+    }
+
+    const translationConsistencyIssue =
+      isEnglishBilingual ? getTranslationConfigConsistencyIssue(config) : null
+    if (translationConsistencyIssue) {
+      setProcessError(translationConsistencyIssue)
+      return
+    }
+
+    if (isEnglishBilingual && !hasUsableTranslationConfig(config)) {
+      setProcessError(buildTranslationConfigUserHint(config))
+      return
+    }
+
+    setIsWorking(true)
+    setProcessError(null)
+
+    try {
+      const response = await runVideoSubtitle({
+        videoPath: videoSubtitleDraft.videoPath,
+        subtitlePath: subtitlePathForRun,
+        sourceLanguage: videoSubtitleDraft.sourceLanguage,
+        outputMode: videoSubtitleDraft.outputMode,
+        config,
+      })
+      const nextImportResult = buildVideoSubtitleImportResult(
+        response,
+        response.pipeline === 'alignAndTranslate' ? subtitlePathForRun.trim() : null,
+      )
+
+      startTransition(() => {
+        setImportResult(nextImportResult)
+        setImportError(null)
+        setProjectState({
+          currentFile: { ...response.currentFile },
+          segments: cloneSegments(response.segments),
+          status: 'done',
+          error: null,
+        })
+        setCurrentTask(null)
+        setTranscriptionRun(response.diagnostics.transcription)
+        setTranslationRun(
+          response.diagnostics.translation
+            ? {
+                provider: response.diagnostics.translation.provider,
+                model: response.diagnostics.translation.model,
+                baseUrl: response.diagnostics.translation.baseUrl,
+              }
+            : null,
+        )
+        setExportResult(null)
+        setVideoBurnExportResult(null)
+        setExportFileName('')
+        setFallbackOutputMode(response.outputMode)
+        setConfig((current) => (current ? updateOutputMode(current, response.outputMode) : current))
+        setSavedSegmentsSnapshot(cloneSegments(response.segments))
+        setLastSavedAt(formatSaveTime(new Date()))
+        setLastMainWorkspace('preview')
+        setActiveWorkspace('preview')
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : '视频字幕生成失败，请稍后重试。'
+      startTransition(() => {
+        setProcessError(message)
+      })
+    } finally {
+      setIsWorking(false)
+    }
   }
 
   async function handleStartTranslation(options?: StartTranslationOptions) {
@@ -1578,6 +2086,12 @@ function App() {
 
     if (!hasUsableTranslationConfig(config)) {
       setProcessError(buildTranslationConfigUserHint(config))
+      return
+    }
+
+    const translationConsistencyIssue = getTranslationConfigConsistencyIssue(config)
+    if (translationConsistencyIssue) {
+      setProcessError(translationConsistencyIssue)
       return
     }
 
@@ -1630,6 +2144,7 @@ function App() {
         setConfig(persistedConfig)
         setFallbackOutputMode(persistedConfig.outputMode)
         setExportResult(null)
+        setVideoBurnExportResult(null)
         setProjectState((current) => ({
           ...current,
           status:
@@ -1897,6 +2412,11 @@ function App() {
       throw new Error(buildTranslationConfigUserHint(activeConfig))
     }
 
+    const translationConsistencyIssue = getTranslationConfigConsistencyIssue(activeConfig)
+    if (translationConsistencyIssue) {
+      throw new Error(translationConsistencyIssue)
+    }
+
     const translationResult = await requestTranslation([segment], activeConfig)
     const updatedSegment = translationResult.segments[0]
     if (!updatedSegment) {
@@ -2052,6 +2572,13 @@ function App() {
     })
 
     try {
+      const exportSegments = projectState.segments
+      logExportDebugSummary(
+        exportSegments,
+        selectedExportFormat,
+        selectedOutputMode,
+      )
+
       await patchCurrentTask(
         {
           status: 'exporting',
@@ -2080,7 +2607,7 @@ function App() {
       )
 
       const result = await exportSubtitles({
-        segments: projectState.segments,
+        segments: exportSegments,
         format: selectedExportFormat,
         bilingual: selectedOutputMode === 'bilingual',
         wordMode: selectedWordExportMode,
@@ -2151,6 +2678,137 @@ function App() {
         ],
       )
     } finally {
+      setIsWorking(false)
+    }
+  }
+
+  async function handleBurnSubtitleVideoExport() {
+    if (projectState.segments.length === 0) {
+      const message = m.app.errors.noSubtitleSegmentsToExport
+      setProcessError(message)
+      startTransition(() => {
+        setProjectState((current) => ({
+          ...current,
+          status: 'error',
+          error: message,
+        }))
+      })
+      return
+    }
+
+    const videoPath = getCurrentVideoPath(importResult, projectState)
+    if (!videoPath) {
+      const message = '当前项目没有原视频路径，无法导出带字幕视频。请从“视频字幕”入口生成字幕后再试。'
+      setProcessError(message)
+      startTransition(() => {
+        setProjectState((current) => ({
+          ...current,
+          status: 'error',
+          error: message,
+        }))
+      })
+      return
+    }
+
+    let outputPath: string | null = null
+    try {
+      outputPath = await pickVideoSavePath({
+        defaultFileName: buildDefaultBurnedVideoFileName(videoPath),
+        defaultPath: buildDefaultBurnedVideoOutputPath(videoPath),
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : '无法打开视频另存为窗口，请稍后重试。'
+      setProcessError(message)
+      return
+    }
+
+    if (!outputPath) {
+      return
+    }
+
+    setIsWorking(true)
+    setIsVideoBurnExporting(true)
+    setProcessError(null)
+    setVideoBurnExportResult(null)
+
+    startTransition(() => {
+      setProjectState((current) => ({
+        ...current,
+        status: 'exporting',
+        error: null,
+      }))
+    })
+
+    try {
+      const result = await exportBurnedSubtitleVideo({
+        videoPath,
+        outputPath,
+        segments: projectState.segments,
+        mode: videoBurnMode,
+      })
+
+      startTransition(() => {
+        setVideoBurnExportResult(result)
+        setSavedSegmentsSnapshot(cloneSegments(projectState.segments))
+        setLastSavedAt(formatSaveTime(new Date()))
+        setProjectState((current) => ({
+          ...current,
+          status: 'done',
+          error: null,
+        }))
+      })
+
+      await patchCurrentTask(
+        {
+          status: 'done',
+          errorMessage: null,
+          exportPaths: Array.from(
+            new Set([result.outputPath, ...(currentTaskRef.current?.exportPaths ?? [])]),
+          ),
+          outputMode: selectedOutputMode,
+          projectSnapshot: {
+            currentFile: projectState.currentFile,
+            segments: cloneSegments(projectState.segments),
+            status: 'done',
+            error: null,
+          },
+        },
+        [
+          buildTaskLogEntry(
+            'info',
+            '带字幕视频导出完成。',
+            `保存路径：${result.outputPath}`,
+          ),
+        ],
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : '导出带字幕视频失败，请稍后重试。'
+      startTransition(() => {
+        setProcessError(message)
+        setProjectState((current) => ({
+          ...current,
+          status: 'error',
+          error: message,
+        }))
+      })
+
+      await patchCurrentTask(
+        {
+          status: 'error',
+          errorMessage: message,
+        },
+        [
+          buildTaskLogEntry(
+            'error',
+            '导出带字幕视频失败，可能是 FFmpeg 不可用、源视频路径失效，或目标文件正在被占用。',
+            message,
+          ),
+        ],
+      )
+    } finally {
+      setIsVideoBurnExporting(false)
       setIsWorking(false)
     }
   }
@@ -2259,6 +2917,22 @@ function App() {
     }
   }
 
+  async function handleOpenLatestVideoBurnExportFolder() {
+    if (!videoBurnExportResult) {
+      setProcessError('当前还没有带字幕视频导出结果，先完成一次导出后再打开文件夹。')
+      return
+    }
+
+    try {
+      await openPathInFileManager(videoBurnExportResult.outputPath)
+      setProcessError(null)
+    } catch (error) {
+      setProcessError(
+        error instanceof Error ? error.message : '无法打开导出目录，请稍后重试。',
+      )
+    }
+  }
+
   const startupNotice = isBootstrapping
     ? getStartupLoadingNotice(language)
     : resolvedWorkspace !== activeWorkspace
@@ -2267,7 +2941,7 @@ function App() {
         ? getStartupRecoveryNotice(language)
         : null
 
-  const workspaceCopy = getWorkspaceCopy(resolvedWorkspace, m)
+  const workspaceCopy = getWorkspaceCopy(resolvedWorkspace, language, m)
   const headerMetrics = buildHeaderMetrics(
     resolvedWorkspace,
     importResult,
@@ -2290,10 +2964,12 @@ function App() {
     processError,
     uninstallError,
     isUninstalling,
+    isWorking,
     selectedOutputMode,
     selectedExportFormat,
     selectedWordExportMode,
     exportResult,
+    language,
     m,
   )
   const sidebarState = buildSidebarItems(
@@ -2301,6 +2977,7 @@ function App() {
     importResult,
     projectState,
     isWorking || isUninstalling,
+    language,
     m,
   )
   const hasUnsavedChanges = !areSegmentsEqual(projectState.segments, savedSegmentsSnapshot)
@@ -2309,6 +2986,12 @@ function App() {
       ? uninstallError || configError
         ? 'error'
         : 'idle'
+      : resolvedWorkspace === 'videoSubtitle'
+        ? processError || configError
+          ? 'error'
+          : isWorking
+            ? 'transcribing'
+            : 'idle'
       : processError || configError
         ? 'error'
         : importResult
@@ -2336,16 +3019,24 @@ function App() {
     processError,
     uninstallError,
     isUninstalling,
+    isWorking,
+    selectedOutputMode,
     exportResult,
+    language,
     m,
   )
   const actionBarNote = buildActionBarNote(resolvedWorkspace, importResult, m)
+  const videoSubtitleProject = isVideoSubtitleImportResult(importResult)
 
   const secondaryLabel =
     resolvedWorkspace === 'translation'
       ? m.common.buttons.reloadConfig
       : resolvedWorkspace === 'preview'
-        ? m.common.buttons.translateAgain
+        ? videoSubtitleProject
+          ? language === 'zh'
+            ? '返回视频字幕'
+            : 'Back to video subtitle'
+          : m.common.buttons.translateAgain
         : resolvedWorkspace === 'export'
           ? m.common.buttons.useAutoName
           : resolvedWorkspace === 'settings'
@@ -2506,6 +3197,32 @@ function App() {
             />
           ) : null}
 
+          {resolvedWorkspace === 'videoSubtitle' ? (
+            <VideoSubtitleWorkspace
+              draft={videoSubtitleDraft}
+              config={config}
+              startupCheck={startupCheck}
+              isStartupCheckLoading={isStartupCheckLoading}
+              isWorking={isWorking}
+              processError={processError}
+              onDraftChange={(patch) => {
+                startTransition(() => {
+                  setVideoSubtitleDraft((current) => ({
+                    ...current,
+                    ...patch,
+                  }))
+                  setProcessError(null)
+                })
+              }}
+              onOpenSettings={() => {
+                navigateToWorkspace('settings')
+              }}
+              onStart={async () => {
+                await handleStartVideoSubtitle()
+              }}
+            />
+          ) : null}
+
           {resolvedWorkspace === 'translation' ? (
             <TranslationWorkspace
               config={config}
@@ -2576,11 +3293,17 @@ function App() {
               wordExportMode={selectedWordExportMode}
               exportFileName={exportFileName}
               exportResult={exportResult}
+              videoBurnMode={videoBurnMode}
+              videoBurnExportResult={videoBurnExportResult}
               processError={processError}
               isExporting={isWorking && projectState.status === 'exporting'}
+              isVideoBurnExporting={isVideoBurnExporting}
               hasUnsavedChanges={hasUnsavedChanges}
               onOpenExportFolder={() => {
                 void handleOpenLatestExportFolder()
+              }}
+              onOpenVideoBurnExportFolder={() => {
+                void handleOpenLatestVideoBurnExportFolder()
               }}
               onExportFormatChange={(format) => {
                 startTransition(() => {
@@ -2602,6 +3325,16 @@ function App() {
                   setExportFileName(value)
                   setProcessError(null)
                 })
+              }}
+              onVideoBurnModeChange={(mode) => {
+                startTransition(() => {
+                  setVideoBurnMode(mode)
+                  setVideoBurnExportResult(null)
+                  setProcessError(null)
+                })
+              }}
+              onExportBurnedVideo={() => {
+                void handleBurnSubtitleVideoExport()
               }}
             />
           ) : null}
@@ -2635,84 +3368,86 @@ function App() {
           ) : null}
         </section>
 
-        <ActionBar
-          previousLabel={m.common.buttons.previousStep}
-          secondaryLabel={secondaryLabel}
-          primaryLabel={primaryLabel}
-          note={actionBarNote}
-          previousDisabled={previousDisabled}
-          secondaryDisabled={secondaryDisabled}
-          primaryDisabled={primaryDisabled}
-          onPreviousClick={() => {
-            if (resolvedWorkspace === 'settings') {
-              navigateToWorkspace(lastMainWorkspace)
-              return
-            }
+        {resolvedWorkspace !== 'videoSubtitle' ? (
+          <ActionBar
+            previousLabel={m.common.buttons.previousStep}
+            secondaryLabel={secondaryLabel}
+            primaryLabel={primaryLabel}
+            note={actionBarNote}
+            previousDisabled={previousDisabled}
+            secondaryDisabled={secondaryDisabled}
+            primaryDisabled={primaryDisabled}
+            onPreviousClick={() => {
+              if (resolvedWorkspace === 'settings') {
+                navigateToWorkspace(lastMainWorkspace)
+                return
+              }
 
-            if (resolvedWorkspace === 'export') {
-              navigateToWorkspace('preview')
-              return
-            }
+              if (resolvedWorkspace === 'export') {
+                navigateToWorkspace('preview')
+                return
+              }
 
-            if (resolvedWorkspace === 'preview') {
-              navigateToWorkspace('translation')
-              return
-            }
+              if (resolvedWorkspace === 'preview') {
+                navigateToWorkspace(videoSubtitleProject ? 'videoSubtitle' : 'translation')
+                return
+              }
 
-            navigateToWorkspace('import')
-          }}
-          onSecondaryClick={() => {
-            if (resolvedWorkspace === 'translation') {
-              void hydrateConfig()
-              return
-            }
+              navigateToWorkspace('import')
+            }}
+            onSecondaryClick={() => {
+              if (resolvedWorkspace === 'translation') {
+                void hydrateConfig()
+                return
+              }
 
-            if (resolvedWorkspace === 'preview') {
-              navigateToWorkspace('translation')
-              return
-            }
+              if (resolvedWorkspace === 'preview') {
+                navigateToWorkspace(videoSubtitleProject ? 'videoSubtitle' : 'translation')
+                return
+              }
 
-            if (resolvedWorkspace === 'export') {
-              startTransition(() => {
-                setExportFileName('')
-                setProcessError(null)
-              })
-              return
-            }
+              if (resolvedWorkspace === 'export') {
+                startTransition(() => {
+                  setExportFileName('')
+                  setProcessError(null)
+                })
+                return
+              }
 
-            if (resolvedWorkspace === 'settings') {
-              void hydrateConfig()
-              return
-            }
+              if (resolvedWorkspace === 'settings') {
+                void hydrateConfig()
+                return
+              }
 
-            navigateToWorkspace('settings')
-          }}
-          onPrimaryClick={() => {
-            if (resolvedWorkspace === 'import') {
-              navigateToWorkspace('translation')
-              return
-            }
+              navigateToWorkspace('settings')
+            }}
+            onPrimaryClick={() => {
+              if (resolvedWorkspace === 'import') {
+                navigateToWorkspace('translation')
+                return
+              }
 
-            if (resolvedWorkspace === 'translation') {
-              void handleStartTranslation()
-              return
-            }
+              if (resolvedWorkspace === 'translation') {
+                void handleStartTranslation()
+                return
+              }
 
-            if (resolvedWorkspace === 'preview') {
-              navigateToWorkspace('export')
-              return
-            }
+              if (resolvedWorkspace === 'preview') {
+                navigateToWorkspace('export')
+                return
+              }
 
-            if (resolvedWorkspace === 'export') {
-              void handleExport()
-              return
-            }
+              if (resolvedWorkspace === 'export') {
+                void handleExport()
+                return
+              }
 
-            if (resolvedWorkspace === 'settings') {
-              return
-            }
-          }}
-        />
+              if (resolvedWorkspace === 'settings') {
+                return
+              }
+            }}
+          />
+        ) : null}
       </main>
     </div>
   )

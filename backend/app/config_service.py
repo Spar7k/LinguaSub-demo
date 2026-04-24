@@ -79,29 +79,96 @@ def get_provider_entry(
     return None
 
 
+def get_default_provider_entry(provider_name: ProviderName) -> ApiProviderConfig:
+    fallback = get_provider_entry(create_default_app_config(), provider_name)
+    if fallback is None:
+        raise ValueError(f"Unsupported provider: {provider_name}")
+
+    return fallback
+
+
 def get_active_provider_config(config: AppConfig) -> ApiProviderConfig:
     existing = get_provider_entry(config, config.defaultProvider)
     if existing:
         return existing
 
-    defaults = create_default_app_config()
-    fallback = get_provider_entry(defaults, config.defaultProvider)
-    if fallback is None:
-        raise ValueError(f"Unsupported provider: {config.defaultProvider}")
-
+    fallback = get_default_provider_entry(config.defaultProvider)
     config.apiProviders.append(fallback)
     return fallback
 
 
+def _normalize_text(value: str) -> str:
+    return value.strip()
+
+
+def get_conflicting_default_provider(
+    provider_name: ProviderName,
+    base_url: str,
+    model: str,
+) -> ProviderName | None:
+    normalized_base_url = _normalize_text(base_url)
+    normalized_model = _normalize_text(model)
+    if not normalized_base_url or not normalized_model:
+        return None
+
+    for provider in create_default_app_config().apiProviders:
+        if provider.provider == provider_name:
+            continue
+        if (
+            normalized_base_url == _normalize_text(provider.baseUrl)
+            and normalized_model == _normalize_text(provider.model)
+        ):
+            return provider.provider
+
+    return None
+
+
+def repair_active_provider_fields(
+    config: AppConfig, active_provider: ApiProviderConfig
+) -> None:
+    defaults = get_default_provider_entry(config.defaultProvider)
+
+    # Older mixed configs could keep another provider's default endpoint/model
+    # pair under the selected provider. Repair the obvious cross-provider pair
+    # before mirroring values back to the flat fields.
+    if get_conflicting_default_provider(
+        config.defaultProvider,
+        active_provider.baseUrl,
+        active_provider.model,
+    ):
+        active_provider.baseUrl = defaults.baseUrl
+        active_provider.model = defaults.model
+
+    if not _normalize_text(active_provider.baseUrl):
+        if (
+            _normalize_text(config.baseUrl)
+            and not get_conflicting_default_provider(
+                config.defaultProvider,
+                config.baseUrl,
+                config.model,
+            )
+        ):
+            active_provider.baseUrl = config.baseUrl
+        else:
+            active_provider.baseUrl = defaults.baseUrl
+
+    if not _normalize_text(active_provider.model):
+        if (
+            _normalize_text(config.model)
+            and not get_conflicting_default_provider(
+                config.defaultProvider,
+                config.baseUrl,
+                config.model,
+            )
+        ):
+            active_provider.model = config.model
+        else:
+            active_provider.model = defaults.model
+
+
 def sync_active_provider_fields(config: AppConfig) -> AppConfig:
     active_provider = get_active_provider_config(config)
-
-    if config.apiKey:
-        active_provider.apiKey = config.apiKey
-    if config.baseUrl:
-        active_provider.baseUrl = config.baseUrl
-    if config.model:
-        active_provider.model = config.model
+    repair_active_provider_fields(config, active_provider)
 
     config.apiKey = active_provider.apiKey
     config.baseUrl = active_provider.baseUrl

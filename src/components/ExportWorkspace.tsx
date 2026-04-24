@@ -2,6 +2,10 @@ import type { ExportResult, ExportFormat, WordExportMode } from '../types/export
 import { useI18n } from '../i18n/useI18n'
 import type { ImportResult } from '../types/import'
 import type { OutputMode, ProjectState } from '../types/models'
+import type {
+  VideoBurnExportMode,
+  VideoBurnExportResult,
+} from '../types/videoExport'
 import { safeTrim } from '../utils/config'
 import { SectionCard } from './SectionCard'
 
@@ -13,14 +17,20 @@ type ExportWorkspaceProps = {
   wordExportMode: WordExportMode
   exportFileName: string
   exportResult: ExportResult | null
+  videoBurnMode: VideoBurnExportMode
+  videoBurnExportResult: VideoBurnExportResult | null
   processError: string | null
   isExporting: boolean
+  isVideoBurnExporting: boolean
   hasUnsavedChanges: boolean
   onOpenExportFolder: () => void
+  onOpenVideoBurnExportFolder: () => void
   onExportFormatChange: (format: ExportFormat) => void
   onOutputModeChange: (mode: OutputMode) => void
   onWordExportModeChange: (mode: WordExportMode) => void
   onFileNameChange: (value: string) => void
+  onVideoBurnModeChange: (mode: VideoBurnExportMode) => void
+  onExportBurnedVideo: () => void
 }
 
 function getDefaultFileName(
@@ -72,14 +82,20 @@ export function ExportWorkspace({
   wordExportMode,
   exportFileName,
   exportResult,
+  videoBurnMode,
+  videoBurnExportResult,
   processError,
   isExporting,
+  isVideoBurnExporting,
   hasUnsavedChanges,
   onOpenExportFolder,
+  onOpenVideoBurnExportFolder,
   onExportFormatChange,
   onOutputModeChange,
   onWordExportModeChange,
   onFileNameChange,
+  onVideoBurnModeChange,
+  onExportBurnedVideo,
 }: ExportWorkspaceProps) {
   const { m, language } = useI18n()
   const exportCopy =
@@ -96,6 +112,44 @@ export function ExportWorkspace({
           sanitized:
             'Unsupported characters were removed from the requested file name automatically.',
         }
+  const videoExportCopy =
+    language === 'zh'
+      ? {
+          title: '导出带字幕视频',
+          description:
+            '把当前完整字幕烧录到原视频上，另存为一个新的 MP4 文件。',
+          modeLabel: '视频字幕模式',
+          modeBilingual: '双语字幕',
+          modeTranslated: '仅译文字幕',
+          modeHint: '第一版使用固定样式：底部居中、白字黑边。',
+          start: '选择保存位置并导出 MP4',
+          exporting: '正在导出带字幕视频...',
+          noVideo:
+            '当前项目没有原视频路径。请先从“视频字幕”入口生成字幕，再导出带字幕视频。',
+          noSegments: '当前还没有字幕内容，先完成识别/翻译后再导出视频。',
+          successTitle: '带字幕视频导出完成',
+          successDescription: (fileName: string) =>
+            `已生成 ${fileName}，可以打开所在目录查看。`,
+          openFolder: '打开所在目录',
+        }
+      : {
+          title: 'Export subtitled video',
+          description:
+            'Burn the full current subtitles into the original video and save a new MP4 file.',
+          modeLabel: 'Video subtitle mode',
+          modeBilingual: 'Bilingual subtitles',
+          modeTranslated: 'Translated subtitles only',
+          modeHint: 'MVP styling is fixed: bottom centered, white text with black outline.',
+          start: 'Choose save location and export MP4',
+          exporting: 'Exporting subtitled video...',
+          noVideo:
+            'This project does not have an original video path. Start from Video subtitle first.',
+          noSegments: 'There are no subtitles yet. Finish recognition/translation first.',
+          successTitle: 'Subtitled video exported',
+          successDescription: (fileName: string) =>
+            `${fileName} was created. You can open its folder now.`,
+          openFolder: 'Open folder',
+        }
   const translatedCount = projectState.segments.filter((segment) =>
     safeTrim(segment.translatedText),
   ).length
@@ -110,6 +164,23 @@ export function ExportWorkspace({
       segment.end < segment.start,
   ).length
   const currentFilePath = importResult?.currentFile.path ?? null
+  const currentVideoPath =
+    importResult?.currentFile.mediaType === 'video'
+      ? importResult.currentFile.path
+      : projectState.currentFile?.mediaType === 'video'
+        ? projectState.currentFile.path
+        : null
+  const currentVideoName =
+    importResult?.currentFile.mediaType === 'video'
+      ? importResult.currentFile.name
+      : projectState.currentFile?.mediaType === 'video'
+        ? projectState.currentFile.name
+        : null
+  const canExportBurnedVideo =
+    Boolean(currentVideoPath) &&
+    projectState.segments.length > 0 &&
+    !isExporting &&
+    !isVideoBurnExporting
   const effectiveFileName =
     safeTrim(exportFileName) ||
     getDefaultFileName(currentFilePath, exportFormat, outputMode, wordExportMode)
@@ -329,6 +400,71 @@ export function ExportWorkspace({
                 onClick={onOpenExportFolder}
               >
                 {exportCopy.openFolder}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="info-panel">
+          <strong>{videoExportCopy.title}</strong>
+          <p>{videoExportCopy.description}</p>
+
+          <div className="settings-grid">
+            <label className="field-block">
+              <span className="field-label">{videoExportCopy.modeLabel}</span>
+              <select
+                className="select-input"
+                value={videoBurnMode}
+                onChange={(event) =>
+                  onVideoBurnModeChange(event.target.value as VideoBurnExportMode)
+                }
+                disabled={isVideoBurnExporting || isExporting}
+              >
+                <option value="bilingual">{videoExportCopy.modeBilingual}</option>
+                <option value="translated">{videoExportCopy.modeTranslated}</option>
+              </select>
+            </label>
+
+            <div className="info-tile">
+              <span className="field-label">{m.common.summary.sourceFile}</span>
+              <strong>{currentVideoPath ? currentVideoName : '未找到原视频'}</strong>
+              <p>
+                {currentVideoPath
+                  ? '将使用当前项目的原视频路径，不会使用预览过滤后的字幕。'
+                  : videoExportCopy.noVideo}
+              </p>
+            </div>
+          </div>
+
+          <p>{videoExportCopy.modeHint}</p>
+          {projectState.segments.length === 0 ? (
+            <p>{videoExportCopy.noSegments}</p>
+          ) : null}
+
+          <div className="inline-actions">
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={onExportBurnedVideo}
+              disabled={!canExportBurnedVideo}
+            >
+              {isVideoBurnExporting ? videoExportCopy.exporting : videoExportCopy.start}
+            </button>
+          </div>
+        </div>
+
+        {videoBurnExportResult ? (
+          <div className="success-banner" role="status">
+            <strong>{videoExportCopy.successTitle}</strong>
+            <p>{videoExportCopy.successDescription(videoBurnExportResult.fileName)}</p>
+            <code className="path-preview">{videoBurnExportResult.outputPath}</code>
+            <div className="inline-actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={onOpenVideoBurnExportFolder}
+              >
+                {videoExportCopy.openFolder}
               </button>
             </div>
           </div>
