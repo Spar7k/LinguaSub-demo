@@ -230,27 +230,8 @@ export function ExportWorkspace({
       description={m.exportPage.sections.export.description}
       className="span-12 export-workspace-card"
     >
-      <div className="export-summary-chips" aria-label={copy.projectSummaryTitle}>
-        <span className="metric-chip">
-          <span className="metric-chip__label">{m.common.summary.subtitleRows}</span>
-          <strong>{projectState.segments.length}</strong>
-        </span>
-        <span className="metric-chip">
-          <span className="metric-chip__label">{m.common.summary.translatedRows}</span>
-          <strong>
-            {translatedCount} / {projectState.segments.length}
-          </strong>
-        </span>
-        <span className="metric-chip">
-          <span className="metric-chip__label">{m.common.summary.livePreviewEdits}</span>
-          <strong>
-            {hasUnsavedChanges
-              ? m.common.misc.includedInExport
-              : m.common.misc.alreadySaved}
-          </strong>
-        </span>
-      </div>
-
+      <div className="export-layout">
+        <div className="export-layout__primary">
       <div className="export-target-group">
         <span className="field-label">{copy.targetLabel}</span>
         <div className="export-target-grid" role="tablist" aria-label={copy.targetLabel}>
@@ -359,6 +340,54 @@ export function ExportWorkspace({
         </div>
       )}
 
+      <div className="export-primary-row">
+        <div>
+          <strong>
+            {exportTarget === 'video'
+              ? copy.targets.video.title
+              : exportTarget === 'word'
+                ? copy.targets.word.title
+                : copy.targets.subtitle.title}
+          </strong>
+          <p>
+            {exportTarget === 'video'
+              ? copy.outputRulesDescription
+              : `${destinationDirectory} / ${effectiveFileName}`}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="button button--primary export-primary-button"
+          onClick={handlePrimaryExport}
+          disabled={primaryDisabled}
+        >
+          {primaryLabel}
+        </button>
+      </div>
+        </div>
+
+        <div className="export-layout__aside">
+      <div className="export-summary-chips" aria-label={copy.projectSummaryTitle}>
+        <span className="metric-chip">
+          <span className="metric-chip__label">{m.common.summary.subtitleRows}</span>
+          <strong>{projectState.segments.length}</strong>
+        </span>
+        <span className="metric-chip">
+          <span className="metric-chip__label">{m.common.summary.translatedRows}</span>
+          <strong>
+            {translatedCount} / {projectState.segments.length}
+          </strong>
+        </span>
+        <span className="metric-chip">
+          <span className="metric-chip__label">{m.common.summary.livePreviewEdits}</span>
+          <strong>
+            {hasUnsavedChanges
+              ? m.common.misc.includedInExport
+              : m.common.misc.alreadySaved}
+          </strong>
+        </span>
+      </div>
+
       {projectState.segments.length === 0 ? (
         <div className="error-banner" role="alert">
           <strong>{m.common.misc.noSubtitleContent}</strong>
@@ -404,31 +433,6 @@ export function ExportWorkspace({
           </p>
         </div>
       ) : null}
-
-      <div className="export-primary-row">
-        <div>
-          <strong>
-            {exportTarget === 'video'
-              ? copy.targets.video.title
-              : exportTarget === 'word'
-                ? copy.targets.word.title
-                : copy.targets.subtitle.title}
-          </strong>
-          <p>
-            {exportTarget === 'video'
-              ? copy.outputRulesDescription
-              : `${destinationDirectory} / ${effectiveFileName}`}
-          </p>
-        </div>
-        <button
-          type="button"
-          className="button button--primary export-primary-button"
-          onClick={handlePrimaryExport}
-          disabled={primaryDisabled}
-        >
-          {primaryLabel}
-        </button>
-      </div>
 
       {processError ? (
         <div className="export-result-strip export-result-strip--error" role="alert">
@@ -478,6 +482,8 @@ export function ExportWorkspace({
           </button>
         </div>
       ) : null}
+        </div>
+      </div>
 
       <details className="export-details">
         <summary>{copy.detailsTitle}</summary>
