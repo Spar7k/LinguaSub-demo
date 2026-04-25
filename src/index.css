@@ -301,11 +301,12 @@ ol {
 .step-header {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
   padding: 30px 34px 24px;
   border-bottom: 1px solid rgba(222, 212, 197, 0.48);
-  background: rgba(251, 248, 241, 0.92);
+  background: var(--color-bg-soft);
   box-shadow: 0 8px 24px rgba(60, 52, 42, 0.02);
+  isolation: isolate;
 }
 
 .step-header__top {
