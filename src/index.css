@@ -1045,7 +1045,8 @@ ol {
 .field-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .select-input {
@@ -1066,7 +1067,7 @@ ol {
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .field-hint {
@@ -1602,9 +1603,10 @@ ol {
 
 .info-tile {
   padding: 16px;
-  border-radius: 16px;
-  background: #ffffff;
-  border: 1px solid rgba(195, 208, 223, 0.72);
+  border-radius: var(--radius-md);
+  background: var(--color-paper);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1612,11 +1614,13 @@ ol {
 
 .info-tile strong {
   font-size: 16px;
+  color: var(--color-text);
 }
 
 .info-tile p {
   color: var(--text-muted);
   font-size: 13px;
+  line-height: 1.55;
 }
 
 .inline-actions {
@@ -1709,6 +1713,13 @@ ol {
   border-radius: 18px;
   background: #ffffff;
   border: 1px solid rgba(195, 208, 223, 0.72);
+}
+
+.info-panel {
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
 }
 
 .dependency-card__head {
@@ -1903,6 +1914,8 @@ ol {
 .notice-list {
   margin: 10px 0 0;
   padding-left: 18px;
+  color: var(--color-muted);
+  line-height: 1.65;
 }
 
 .notice-list li + li {
@@ -1911,9 +1924,10 @@ ol {
 
 .summary-item {
   padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: #ffffff;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
 }
 
 .summary-item__label {
@@ -1995,34 +2009,44 @@ ol {
 .progress-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .progress-item {
   padding: 18px;
-  border-radius: 18px;
-  background: #ffffff;
-  border: 1px solid rgba(195, 208, 223, 0.72);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  color: var(--color-text);
+  transition:
+    border-color var(--duration-fast) var(--ease-soft),
+    background var(--duration-fast) var(--ease-soft),
+    box-shadow var(--duration-fast) var(--ease-soft);
 }
 
 .progress-item--done {
-  background: linear-gradient(180deg, #ffffff 0%, #f4fbf6 100%);
-  border-color: #b7e0c3;
+  background: var(--color-success-soft);
+  border-color: rgba(111, 139, 106, 0.38);
 }
 
 .progress-item--active {
-  background: linear-gradient(180deg, #ffffff 0%, #f4f8ff 100%);
-  border-color: var(--accent-border);
+  background: var(--color-accent-subtle);
+  border-color: rgba(125, 146, 120, 0.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(125, 146, 120, 0.12),
+    var(--shadow-xs);
 }
 
 .progress-item__title {
   display: inline-flex;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: var(--panel-muted);
-  color: var(--text-strong);
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
   font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .progress-item p {
@@ -2042,9 +2066,10 @@ ol {
   justify-content: space-between;
   gap: 16px;
   padding: 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(195, 208, 223, 0.72);
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
 }
 
 .subtitle-toolbar__search {
@@ -2062,9 +2087,10 @@ ol {
 
 .toolbar-badge {
   padding: 10px 12px;
-  border-radius: 14px;
-  background: var(--panel-muted);
-  border: 1px solid rgba(195, 208, 223, 0.72);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -2072,8 +2098,9 @@ ol {
 }
 
 .toolbar-badge--warn {
-  background: #fff9ec;
-  border-color: #f6d59b;
+  background: var(--color-warning-soft);
+  border-color: rgba(169, 130, 67, 0.34);
+  color: var(--color-warning);
 }
 
 .toolbar-badge__label {
@@ -2085,6 +2112,7 @@ ol {
 
 .toolbar-badge strong {
   font-size: 14px;
+  color: var(--color-text);
 }
 
 .toolbar-badge__hint {
@@ -2095,7 +2123,7 @@ ol {
 .editor-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .editor-row {
@@ -2103,40 +2131,59 @@ ol {
   grid-template-columns: 170px minmax(0, 1fr);
   gap: 16px;
   padding: 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(195, 208, 223, 0.72);
-  background: #ffffff;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  color: var(--color-text);
 }
 
 .editor-row--loading {
-  border-color: var(--accent-border);
-  background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
+  border-color: rgba(125, 146, 120, 0.48);
+  background: var(--color-accent-subtle);
 }
 
 .editor-row__time {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
+  color: var(--color-muted);
 }
 
 .editor-row__time strong {
   font-size: 15px;
+  color: var(--color-text);
 }
 
 .editor-row__time span {
-  color: var(--text-soft);
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  color: var(--color-soft);
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .editor-row__fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .editor-row__error {
   grid-column: span 2;
   margin-top: 0;
+}
+
+.editor-row .textarea-input {
+  background: var(--color-bg-soft);
+  border-color: var(--color-border);
+}
+
+.editor-row .textarea-input:focus {
+  background: var(--color-surface);
 }
 
 .segment-table {
