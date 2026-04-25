@@ -10,6 +10,7 @@ type StepHeaderProps = {
   statusTone: 'success' | 'warn' | 'idle' | 'error'
   statusHint: string
   metrics: HeaderMetric[]
+  metricsVariant?: 'cards' | 'chips'
 }
 
 export function StepHeader({
@@ -21,6 +22,7 @@ export function StepHeader({
   statusTone,
   statusHint,
   metrics,
+  metricsVariant = 'cards',
 }: StepHeaderProps) {
   const { language, setLanguage, m } = useI18n()
 
@@ -67,15 +69,26 @@ export function StepHeader({
       <h2>{title}</h2>
       <p>{description}</p>
 
-      <div className="metric-grid">
-        {metrics.map((metric) => (
-          <article key={metric.label} className="metric-card">
-            <span className="metric-card__label">{metric.label}</span>
-            <div className="metric-card__value">{metric.value}</div>
-            <p className="metric-card__hint">{metric.hint}</p>
-          </article>
-        ))}
-      </div>
+      {metricsVariant === 'chips' ? (
+        <div className="metric-chip-row">
+          {metrics.map((metric) => (
+            <span key={`${metric.label}-${metric.value}`} className="metric-chip" title={metric.hint}>
+              <span className="metric-chip__label">{metric.label}</span>
+              <strong>{metric.value}</strong>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="metric-grid">
+          {metrics.map((metric) => (
+            <article key={`${metric.label}-${metric.value}`} className="metric-card">
+              <span className="metric-card__label">{metric.label}</span>
+              <div className="metric-card__value">{metric.value}</div>
+              <p className="metric-card__hint">{metric.hint}</p>
+            </article>
+          ))}
+        </div>
+      )}
     </header>
   )
 }

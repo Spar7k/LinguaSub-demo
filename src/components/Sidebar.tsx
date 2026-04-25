@@ -13,7 +13,6 @@ export function Sidebar({ items, status, onSelectItem }: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand__eyebrow">{m.sidebar.eyebrow}</span>
         <h1>{m.common.appName}</h1>
         <p>{m.sidebar.description}</p>
       </div>
@@ -33,7 +32,6 @@ export function Sidebar({ items, status, onSelectItem }: SidebarProps) {
             <span className="sidebar-item__index">{String(index + 1).padStart(2, '0')}</span>
             <span>
               <span className="sidebar-item__label">{item.label}</span>
-              <span className="sidebar-item__desc">{item.description}</span>
             </span>
           </button>
         ))}
@@ -43,11 +41,6 @@ export function Sidebar({ items, status, onSelectItem }: SidebarProps) {
         <span className="sidebar-status__label">{m.common.taskStatus}</span>
         <div className="sidebar-status__value">{status.label}</div>
         <p className="sidebar-status__hint">{status.hint}</p>
-        <ul>
-          {status.points.map((point) => (
-            <li key={point}>{point}</li>
-          ))}
-        </ul>
       </section>
     </aside>
   )

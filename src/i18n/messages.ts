@@ -178,22 +178,22 @@ const zhMessages = {
   },
   sidebar: {
     eyebrow: 'Windows 桌面工作流',
-    description: '本地识别、云端翻译，以及简洁清晰的字幕处理流程。',
+    description: '字幕生成与导出工具',
     items: {
       import: {
         label: '导入',
         description: '选择视频、音频或字幕文件',
       },
       recognition: {
-        label: '识别设置',
+        label: '识别',
         description: '准备 faster-whisper 参数',
       },
       translation: {
-        label: '翻译设置',
+        label: '翻译',
         description: '选择服务商、模型和输出模式',
       },
       preview: {
-        label: '字幕预览',
+        label: '预览',
         description: '检查原文与译文',
       },
       export: {
@@ -293,8 +293,8 @@ const zhMessages = {
     sections: {
       import: {
         eyebrow: '导入',
-        title: '选择本地源文件',
-        description: 'Step 4 使用 Python 后端校验本地路径，后续 ASR 和 SRT 解析都复用同一个统一入口。',
+        title: '选择一个源文件',
+        description: '拖入文件，或点击按钮从本机选择。',
       },
       summary: {
         eyebrow: '摘要',
@@ -321,9 +321,9 @@ const zhMessages = {
     pathTitle: '粘贴或输入本地文件路径',
     pathDescription: '支持完整路径或相对路径，例如',
     localPath: '本地路径',
-    helperText: '后续接入 Tauri 原生文件选择器时，无需修改后端导入协议。',
-    emptySummaryTitle: '还没有导入文件',
-    emptySummaryDescription: '导入成功后，这里会显示文件名、路径、类型和下一阶段。',
+    helperText: '也可以直接粘贴本机绝对路径。',
+    emptySummaryTitle: '还没有选择文件',
+    emptySummaryDescription: '选择视频、音频或 SRT 后，这里会显示文件信息和下一步。',
     workflowWaitingTitle: '正在等待导入文件',
     workflowWaitingDescription: '媒体文件会生成识别载荷，SRT 文件会生成字幕解析载荷。',
     noEnvironmentTitle: '正在等待环境报告',
@@ -752,22 +752,22 @@ const enMessages = {
   },
   sidebar: {
     eyebrow: 'Windows Desktop Workflow',
-    description: 'Local recognition, cloud translation, and a clear subtitle workflow.',
+    description: 'Subtitle generation and export tool',
     items: {
       import: {
         label: 'Import',
         description: 'Choose a video, audio, or subtitle file',
       },
       recognition: {
-        label: 'Recognition Setup',
+        label: 'ASR',
         description: 'Prepare faster-whisper settings',
       },
       translation: {
-        label: 'Translation Setup',
+        label: 'Translate',
         description: 'Choose provider, model, and output mode',
       },
       preview: {
-        label: 'Subtitle Preview',
+        label: 'Preview',
         description: 'Review source and translated lines',
       },
       export: {
@@ -802,9 +802,9 @@ const enMessages = {
           'Review the translated result. Every subtitle segment in the shared project state now carries both source text and translated text.',
       },
       export: {
-        title: 'Export Subtitle',
+        title: 'Export Results',
         description:
-          'Generate the final subtitle file from the current project state, with either bilingual or single-language SRT output.',
+          'Choose an export type, confirm a few options, and generate the final file.',
       },
       settings: {
         title: 'App Settings',
@@ -880,8 +880,8 @@ const enMessages = {
     sections: {
       import: {
         eyebrow: 'Import',
-        title: 'Choose a local source file',
-        description: 'Step 4 validates a local path through the Python backend so later ASR and SRT parsing can reuse the same entry point.',
+        title: 'Choose a source file',
+        description: 'Drop a file here, or choose one from this computer.',
       },
       summary: {
         eyebrow: 'Summary',
@@ -908,9 +908,9 @@ const enMessages = {
     pathTitle: 'Paste or type a local file path',
     pathDescription: 'Use a full or relative path such as',
     localPath: 'Local path',
-    helperText: 'A native Tauri file picker can be attached later without changing the backend import contract.',
-    emptySummaryTitle: 'No file imported yet',
-    emptySummaryDescription: 'The summary card will show the file name, path, type, and next stage after a successful import.',
+    helperText: 'You can also paste a local absolute path.',
+    emptySummaryTitle: 'No file selected yet',
+    emptySummaryDescription: 'Choose a video, audio, or SRT file to see file details and the next step.',
     workflowWaitingTitle: 'Waiting for an imported file',
     workflowWaitingDescription: 'Media files will produce a recognition payload. SRT files will produce a subtitle parsing payload.',
     noEnvironmentTitle: 'Waiting for environment report',
@@ -1126,9 +1126,9 @@ const enMessages = {
     sections: {
       export: {
         eyebrow: 'Export',
-        title: 'Choose the subtitle output',
+        title: 'Export results',
         description:
-          'Step 9 uses the current ProjectState.segments, including preview edits, and writes either an SRT subtitle file or a Word document to disk.',
+          'Choose an export type, confirm a few options, and generate the final file.',
       },
       summary: {
         eyebrow: 'Summary',
@@ -1137,6 +1137,52 @@ const enMessages = {
       },
     },
     currentProjectFolder: 'Current project folder',
+    task: {
+      targetLabel: 'Export type',
+      targets: {
+        subtitle: {
+          title: 'Subtitle file',
+          description: 'Generate an SRT subtitle file from the current segments.',
+        },
+        word: {
+          title: 'Word document',
+          description: 'Generate a DOCX file for review, reading, or archiving.',
+        },
+        video: {
+          title: 'Subtitled video',
+          description: 'Burn subtitles into the original video and save a new MP4.',
+        },
+      },
+      fileNameLabel: 'File name',
+      fileNameHint: 'Leave empty to use the default name.',
+      videoStyleTitle: 'Video style',
+      videoStyleDescription: 'Automatically adapts to portrait / landscape video.',
+      videoSourceLabel: 'Original video',
+      noOriginalVideo:
+        'No original video path is available. Generate subtitles from Video subtitle first.',
+      noSegments: 'There are no subtitles yet. Finish recognition or translation first.',
+      successTitle: 'Export complete',
+      failureTitle: 'Export failed',
+      failureHint: 'Check the path, permissions, or settings, then try again.',
+      outputPathLabel: 'Saved to:',
+      openFolder: 'Open folder',
+      detailsTitle: 'View export details',
+      projectSummaryTitle: 'Project summary',
+      formatDetailsTitle: 'Format notes',
+      outputRulesTitle: 'Output rules',
+      videoNotesTitle: 'Video export',
+      outputRulesDescription:
+        'Subtitle and Word exports use the imported source folder by default. Video export asks for a full MP4 save path.',
+      videoNotesDescription:
+        'Video export uses the current full ProjectState.segments and lets the backend choose an adaptive ASS style.',
+      buttons: {
+        exportSubtitle: 'Export subtitle file',
+        exportWord: 'Export Word document',
+        exportVideo: 'Export subtitled video',
+        exporting: 'Exporting...',
+        exportingVideo: 'Generating subtitled video...',
+      },
+    },
     formatLabel: 'Export format',
     wordModeLabel: 'Word mode',
     destinationDescription: 'LinguaSub saves the exported subtitle beside the imported source file by default.',
@@ -1331,6 +1377,13 @@ const zhMessagesNormalized = {
   },
   app: {
     ...zhMessages.app,
+    workspace: {
+      ...zhMessages.app.workspace,
+      export: {
+        title: '导出结果',
+        description: '选择导出类型，确认少量选项后生成文件。',
+      },
+    },
     errors: {
       ...zhMessages.app.errors,
       cloudTranscriptionSetupRequired:
@@ -1396,8 +1449,54 @@ const zhMessagesNormalized = {
       ...zhMessages.exportPage.sections,
       export: {
         ...zhMessages.exportPage.sections.export,
+        title: '导出结果',
         description:
-          '当前导出会直接复用 ProjectState.segments，支持继续导出为 SRT 字幕文件或 Word 文档。',
+          '选择导出类型，确认少量选项后生成文件。',
+      },
+    },
+    task: {
+      targetLabel: '导出类型',
+      targets: {
+        subtitle: {
+          title: '字幕文件',
+          description: '把当前字幕片段导出为 SRT 文件。',
+        },
+        word: {
+          title: 'Word 文档',
+          description: '生成适合审阅、阅读或归档的 DOCX 文件。',
+        },
+        video: {
+          title: '带字幕视频',
+          description: '把字幕烧录到原视频上，另存为新的 MP4。',
+        },
+      },
+      fileNameLabel: '文件名',
+      fileNameHint: '留空时会使用默认名称。',
+      videoStyleTitle: '视频样式',
+      videoStyleDescription: '自动适配竖屏 / 横屏。',
+      videoSourceLabel: '原视频',
+      noOriginalVideo: '当前没有原视频路径，请先从“视频字幕”生成字幕。',
+      noSegments: '当前还没有字幕内容，请先完成识别或翻译。',
+      successTitle: '导出完成',
+      failureTitle: '导出失败',
+      failureHint: '请检查路径、权限或设置后重试。',
+      outputPathLabel: '已保存到：',
+      openFolder: '打开所在目录',
+      detailsTitle: '查看导出详情',
+      projectSummaryTitle: '项目摘要',
+      formatDetailsTitle: '格式说明',
+      outputRulesTitle: '输出规则',
+      videoNotesTitle: '视频导出',
+      outputRulesDescription:
+        '字幕和 Word 默认保存到源文件所在目录。带字幕视频会先让你选择完整的 MP4 保存路径。',
+      videoNotesDescription:
+        '带字幕视频会使用当前完整 ProjectState.segments，并由后端自动选择适合竖屏 / 横屏的字幕样式。',
+      buttons: {
+        exportSubtitle: '导出字幕文件',
+        exportWord: '导出 Word 文档',
+        exportVideo: '导出带字幕视频',
+        exporting: '正在导出...',
+        exportingVideo: '正在生成带字幕视频...',
       },
     },
     formatLabel: '导出格式',

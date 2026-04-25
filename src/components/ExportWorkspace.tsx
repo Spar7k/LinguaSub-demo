@@ -1,4 +1,6 @@
-import type { ExportResult, ExportFormat, WordExportMode } from '../types/export'
+import { useState } from 'react'
+
+import type { ExportFormat, ExportResult, WordExportMode } from '../types/export'
 import { useI18n } from '../i18n/useI18n'
 import type { ImportResult } from '../types/import'
 import type { OutputMode, ProjectState } from '../types/models'
@@ -8,6 +10,8 @@ import type {
 } from '../types/videoExport'
 import { safeTrim } from '../utils/config'
 import { SectionCard } from './SectionCard'
+
+type ExportTarget = 'subtitle' | 'word' | 'video'
 
 type ExportWorkspaceProps = {
   importResult: ImportResult | null
@@ -30,7 +34,9 @@ type ExportWorkspaceProps = {
   onWordExportModeChange: (mode: WordExportMode) => void
   onFileNameChange: (value: string) => void
   onVideoBurnModeChange: (mode: VideoBurnExportMode) => void
+  onExportSubtitles: (format: ExportFormat) => void
   onExportBurnedVideo: () => void
+  onClearExportError: () => void
 }
 
 function getDefaultFileName(
@@ -74,6 +80,14 @@ function getDirectoryLabel(sourceFilePath: string | null): string {
   return sourceFilePath.slice(0, separatorIndex)
 }
 
+function getInitialExportTarget(exportFormat: ExportFormat): ExportTarget {
+  return exportFormat === 'word' ? 'word' : 'subtitle'
+}
+
+function getExportTargetFormat(target: ExportTarget): ExportFormat {
+  return target === 'word' ? 'word' : 'srt'
+}
+
 export function ExportWorkspace({
   importResult,
   projectState,
@@ -95,61 +109,28 @@ export function ExportWorkspace({
   onWordExportModeChange,
   onFileNameChange,
   onVideoBurnModeChange,
+  onExportSubtitles,
   onExportBurnedVideo,
+  onClearExportError,
 }: ExportWorkspaceProps) {
   const { m, language } = useI18n()
-  const exportCopy =
+  const [exportTarget, setExportTarget] = useState<ExportTarget>(() =>
+    getInitialExportTarget(exportFormat),
+  )
+  const copy = m.exportPage.task
+  const resultNoteCopy =
     language === 'zh'
       ? {
-          openFolder: '打开文件夹',
           conflictResolved: '检测到同名文件，已自动追加序号保存。',
           sanitized: '文件名中的非法字符已自动清洗。',
         }
       : {
-          openFolder: 'Open folder',
           conflictResolved:
             'LinguaSub found an existing file with the same name and saved this export with an added number.',
           sanitized:
             'Unsupported characters were removed from the requested file name automatically.',
         }
-  const videoExportCopy =
-    language === 'zh'
-      ? {
-          title: '导出带字幕视频',
-          description:
-            '把当前完整字幕烧录到原视频上，另存为一个新的 MP4 文件。',
-          modeLabel: '视频字幕模式',
-          modeBilingual: '双语字幕',
-          modeTranslated: '仅译文字幕',
-          modeHint: '第一版使用固定样式：底部居中、白字黑边。',
-          start: '选择保存位置并导出 MP4',
-          exporting: '正在导出带字幕视频...',
-          noVideo:
-            '当前项目没有原视频路径。请先从“视频字幕”入口生成字幕，再导出带字幕视频。',
-          noSegments: '当前还没有字幕内容，先完成识别/翻译后再导出视频。',
-          successTitle: '带字幕视频导出完成',
-          successDescription: (fileName: string) =>
-            `已生成 ${fileName}，可以打开所在目录查看。`,
-          openFolder: '打开所在目录',
-        }
-      : {
-          title: 'Export subtitled video',
-          description:
-            'Burn the full current subtitles into the original video and save a new MP4 file.',
-          modeLabel: 'Video subtitle mode',
-          modeBilingual: 'Bilingual subtitles',
-          modeTranslated: 'Translated subtitles only',
-          modeHint: 'MVP styling is fixed: bottom centered, white text with black outline.',
-          start: 'Choose save location and export MP4',
-          exporting: 'Exporting subtitled video...',
-          noVideo:
-            'This project does not have an original video path. Start from Video subtitle first.',
-          noSegments: 'There are no subtitles yet. Finish recognition/translation first.',
-          successTitle: 'Subtitled video exported',
-          successDescription: (fileName: string) =>
-            `${fileName} was created. You can open its folder now.`,
-          openFolder: 'Open folder',
-        }
+
   const translatedCount = projectState.segments.filter((segment) =>
     safeTrim(segment.translatedText),
   ).length
@@ -176,14 +157,14 @@ export function ExportWorkspace({
       : projectState.currentFile?.mediaType === 'video'
         ? projectState.currentFile.name
         : null
+  const isBusy = isExporting || isVideoBurnExporting
+  const canExportFile = projectState.segments.length > 0 && !isBusy
   const canExportBurnedVideo =
-    Boolean(currentVideoPath) &&
-    projectState.segments.length > 0 &&
-    !isExporting &&
-    !isVideoBurnExporting
+    Boolean(currentVideoPath) && projectState.segments.length > 0 && !isBusy
+  const activeFormat = getExportTargetFormat(exportTarget)
   const effectiveFileName =
     safeTrim(exportFileName) ||
-    getDefaultFileName(currentFilePath, exportFormat, outputMode, wordExportMode)
+    getDefaultFileName(currentFilePath, activeFormat, outputMode, wordExportMode)
   const destinationDirectory =
     getDirectoryLabel(currentFilePath) || m.exportPage.currentProjectFolder
   const workflowLabel = importResult
@@ -191,51 +172,116 @@ export function ExportWorkspace({
         .map((step) => m.common.workflowSteps[step as keyof typeof m.common.workflowSteps] ?? step)
         .join(' -> ')
     : ''
-  const exportFormatLabel =
-    exportFormat === 'word'
-      ? m.common.exportFormats.word
-      : m.common.exportFormats.srt
   const formatValue =
-    exportFormat === 'word'
+    exportTarget === 'word'
       ? m.exportPage.fileFormatValues.word
       : m.exportPage.fileFormatValues.srt
   const formatDescription =
-    exportFormat === 'word'
+    exportTarget === 'word'
       ? m.exportPage.fileFormatDescriptions.word
       : m.exportPage.fileFormatDescriptions.srt
   const wordModeDescription =
     wordExportMode === 'transcript'
       ? m.exportPage.wordModeDescriptions.transcript
       : m.exportPage.wordModeDescriptions.bilingualTable
+  const activeFileResult =
+    exportResult &&
+    ((exportTarget === 'subtitle' && exportResult.format === 'srt') ||
+      (exportTarget === 'word' && exportResult.format === 'word'))
+      ? exportResult
+      : null
+  const activeVideoResult = exportTarget === 'video' ? videoBurnExportResult : null
+  const primaryDisabled =
+    exportTarget === 'video' ? !canExportBurnedVideo : !canExportFile
+  const primaryLabel =
+    exportTarget === 'video'
+      ? isVideoBurnExporting
+        ? copy.buttons.exportingVideo
+        : copy.buttons.exportVideo
+      : isExporting
+        ? copy.buttons.exporting
+        : exportTarget === 'word'
+          ? copy.buttons.exportWord
+          : copy.buttons.exportSubtitle
+
+  function selectExportTarget(nextTarget: ExportTarget) {
+    setExportTarget(nextTarget)
+    onClearExportError()
+    if (nextTarget === 'subtitle') {
+      onExportFormatChange('srt')
+    }
+    if (nextTarget === 'word') {
+      onExportFormatChange('word')
+    }
+  }
+
+  function handlePrimaryExport() {
+    if (exportTarget === 'video') {
+      onExportBurnedVideo()
+      return
+    }
+    onExportSubtitles(getExportTargetFormat(exportTarget))
+  }
 
   return (
-    <>
-      <SectionCard
-        eyebrow={m.exportPage.sections.export.eyebrow}
-        title={m.exportPage.sections.export.title}
-        description={m.exportPage.sections.export.description}
-        className="span-7"
-      >
-        <div className="settings-grid">
-          <label className="field-block">
-            <span className="field-label">{m.exportPage.formatLabel}</span>
-            <select
-              className="select-input"
-              value={exportFormat}
-              onChange={(event) => onExportFormatChange(event.target.value as ExportFormat)}
-            >
-              <option value="srt">{m.common.exportFormats.srt}</option>
-              <option value="word">{m.common.exportFormats.word}</option>
-            </select>
-          </label>
+    <SectionCard
+      eyebrow={m.exportPage.sections.export.eyebrow}
+      title={m.exportPage.sections.export.title}
+      description={m.exportPage.sections.export.description}
+      className="span-12 export-workspace-card"
+    >
+      <div className="export-summary-chips" aria-label={copy.projectSummaryTitle}>
+        <span className="metric-chip">
+          <span className="metric-chip__label">{m.common.summary.subtitleRows}</span>
+          <strong>{projectState.segments.length}</strong>
+        </span>
+        <span className="metric-chip">
+          <span className="metric-chip__label">{m.common.summary.translatedRows}</span>
+          <strong>
+            {translatedCount} / {projectState.segments.length}
+          </strong>
+        </span>
+        <span className="metric-chip">
+          <span className="metric-chip__label">{m.common.summary.livePreviewEdits}</span>
+          <strong>
+            {hasUnsavedChanges
+              ? m.common.misc.includedInExport
+              : m.common.misc.alreadySaved}
+          </strong>
+        </span>
+      </div>
 
-          {exportFormat === 'srt' ? (
+      <div className="export-target-group">
+        <span className="field-label">{copy.targetLabel}</span>
+        <div className="export-target-grid" role="tablist" aria-label={copy.targetLabel}>
+          {(['subtitle', 'word', 'video'] as const).map((target) => (
+            <button
+              key={target}
+              type="button"
+              className={`export-target-card ${
+                exportTarget === target ? 'export-target-card--active' : ''
+              }`.trim()}
+              onClick={() => selectExportTarget(target)}
+              disabled={isBusy}
+              aria-pressed={exportTarget === target}
+            >
+              <strong>{copy.targets[target].title}</strong>
+              <span>{copy.targets[target].description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {exportTarget !== 'video' ? (
+        <div className="export-options-grid">
+          {exportTarget === 'subtitle' ? (
             <label className="field-block">
               <span className="field-label">{m.common.summary.outputMode}</span>
               <select
                 className="select-input"
                 value={outputMode}
                 onChange={(event) => onOutputModeChange(event.target.value as OutputMode)}
+                disabled={isBusy}
               >
                 <option value="bilingual">{m.common.outputModes.bilingual}</option>
                 <option value="single">{m.common.outputModes.single}</option>
@@ -250,6 +296,7 @@ export function ExportWorkspace({
                 onChange={(event) =>
                   onWordExportModeChange(event.target.value as WordExportMode)
                 }
+                disabled={isBusy}
               >
                 <option value="bilingualTable">
                   {m.common.wordExportModes.bilingualTable}
@@ -259,8 +306,8 @@ export function ExportWorkspace({
             </label>
           )}
 
-          <label className="field-block">
-            <span className="field-label">{m.common.summary.resolvedFileName}</span>
+          <label className="field-block export-file-name-field">
+            <span className="field-label">{copy.fileNameLabel}</span>
             <input
               className="text-input"
               type="text"
@@ -268,272 +315,215 @@ export function ExportWorkspace({
               onChange={(event) => onFileNameChange(event.target.value)}
               placeholder={getDefaultFileName(
                 currentFilePath,
-                exportFormat,
+                activeFormat,
                 outputMode,
                 wordExportMode,
               )}
               spellCheck={false}
+              disabled={isBusy}
             />
+            <span className="field-hint">{copy.fileNameHint}</span>
+          </label>
+        </div>
+      ) : (
+        <div className="export-video-panel">
+          <label className="field-block">
+            <span className="field-label">{m.common.summary.outputMode}</span>
+            <select
+              className="select-input"
+              value={videoBurnMode}
+              onChange={(event) =>
+                onVideoBurnModeChange(event.target.value as VideoBurnExportMode)
+              }
+              disabled={isBusy}
+            >
+              <option value="bilingual">
+                {language === 'zh' ? '双语字幕' : 'Bilingual subtitles'}
+              </option>
+              <option value="translated">
+                {language === 'zh' ? '仅译文字幕' : 'Translated subtitles only'}
+              </option>
+            </select>
           </label>
 
-          <div className="info-tile">
-            <span className="field-label">{m.common.summary.destinationFolder}</span>
-            <strong>{destinationDirectory}</strong>
-            <p>{m.exportPage.destinationDescription}</p>
+          <div className="export-video-style">
+            <span>{copy.videoStyleTitle}</span>
+            <strong>{copy.videoStyleDescription}</strong>
           </div>
 
-          <div className="info-tile">
-            <span className="field-label">{m.common.summary.resolvedFileName}</span>
-            <strong>{effectiveFileName}</strong>
-            <p>{m.exportPage.resolvedFileNameDescription}</p>
-          </div>
-
-          <div className="info-tile">
-            <span className="field-label">{m.common.summary.exportFormat}</span>
-            <strong>{formatValue}</strong>
-            <p>{formatDescription}</p>
-          </div>
-
-          <div className="info-tile">
-            <span className="field-label">
-              {exportFormat === 'word'
-                ? m.exportPage.wordModeLabel
-                : m.common.summary.outputMode}
-            </span>
-            <strong>
-              {exportFormat === 'word'
-                ? m.common.wordExportModes[wordExportMode]
-                : outputMode === 'bilingual'
-                  ? m.common.outputModes.bilingual
-                  : m.common.outputModes.single}
-            </strong>
-            <p>
-              {exportFormat === 'word'
-                ? wordModeDescription
-                : outputMode === 'bilingual'
-                  ? m.exportPage.bilingualDescription
-                  : m.exportPage.singleDescription}
-            </p>
-          </div>
-
-          <div className="info-tile">
-            <span className="field-label">{m.common.summary.exportStatus}</span>
-            <strong>
-              {isExporting
-                ? m.common.misc.writingFile
-                : exportResult
-                  ? m.common.misc.readyToExportAgain
-                  : m.common.misc.notExportedYet}
-            </strong>
-            <p>
-              {isExporting
-                ? m.exportPage.writingDescription
-                : m.exportPage.readyDescription(exportFormatLabel)}
-            </p>
+          <div className="export-source-summary">
+            <span className="field-label">{copy.videoSourceLabel}</span>
+            <strong>{currentVideoPath ? currentVideoName : m.common.misc.notSelected}</strong>
+            <p>{currentVideoPath ? currentVideoPath : copy.noOriginalVideo}</p>
           </div>
         </div>
+      )}
 
-        {projectState.segments.length === 0 ? (
-          <div className="error-banner" role="alert">
-            <strong>{m.common.misc.noSubtitleContent}</strong>
-            <p>{m.exportPage.noSubtitleDescription}</p>
-          </div>
-        ) : null}
-
-        {exportFormat === 'srt' && outputMode === 'bilingual' && missingTranslationCount > 0 ? (
-          <div className="warning-banner" role="alert">
-            <strong>{m.common.misc.missingTranslatedLines}</strong>
-            <p>{m.exportPage.missingLinesDescription(missingTranslationCount)}</p>
-          </div>
-        ) : null}
-
-        {exportFormat === 'word' && missingTranslationCount > 0 ? (
-          <div className="warning-banner" role="alert">
-            <strong>{m.common.misc.missingTranslatedLines}</strong>
-            <p>{m.exportPage.wordMissingTranslationsDescription(missingTranslationCount)}</p>
-          </div>
-        ) : null}
-
-        {invalidTimelineCount > 0 ? (
-          <div
-            className={exportFormat === 'word' ? 'warning-banner' : 'error-banner'}
-            role="alert"
-          >
-            <strong>{m.common.misc.timelineNeedsAttention}</strong>
-            <p>
-              {exportFormat === 'word'
-                ? m.exportPage.wordInvalidTimelineDescription(invalidTimelineCount)
-                : m.exportPage.invalidTimelineDescription(invalidTimelineCount)}
-            </p>
-          </div>
-        ) : null}
-
-        {processError ? (
-          <div className="error-banner" role="alert">
-            <strong>{m.common.misc.exportFailed}</strong>
-            <p>{processError}</p>
-          </div>
-        ) : null}
-
-        {exportResult ? (
-          <div className="success-banner" role="status">
-            <strong>{m.common.misc.lastExportCompleted}</strong>
-            <p>{m.exportPage.lastExportDescription(exportResult.fileName)}</p>
-            <code className="path-preview">{exportResult.path}</code>
-            {exportResult.conflictResolved || exportResult.sanitizedFileName ? (
-              <p>
-                {exportResult.conflictResolved
-                  ? exportCopy.conflictResolved
-                  : null}
-                {exportResult.conflictResolved && exportResult.sanitizedFileName
-                  ? ' '
-                  : null}
-                {exportResult.sanitizedFileName
-                  ? exportCopy.sanitized
-                  : null}
-              </p>
-            ) : null}
-            <div className="inline-actions">
-              <button
-                type="button"
-                className="button button--secondary"
-                onClick={onOpenExportFolder}
-              >
-                {exportCopy.openFolder}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="info-panel">
-          <strong>{videoExportCopy.title}</strong>
-          <p>{videoExportCopy.description}</p>
-
-          <div className="settings-grid">
-            <label className="field-block">
-              <span className="field-label">{videoExportCopy.modeLabel}</span>
-              <select
-                className="select-input"
-                value={videoBurnMode}
-                onChange={(event) =>
-                  onVideoBurnModeChange(event.target.value as VideoBurnExportMode)
-                }
-                disabled={isVideoBurnExporting || isExporting}
-              >
-                <option value="bilingual">{videoExportCopy.modeBilingual}</option>
-                <option value="translated">{videoExportCopy.modeTranslated}</option>
-              </select>
-            </label>
-
-            <div className="info-tile">
-              <span className="field-label">{m.common.summary.sourceFile}</span>
-              <strong>{currentVideoPath ? currentVideoName : '未找到原视频'}</strong>
-              <p>
-                {currentVideoPath
-                  ? '将使用当前项目的原视频路径，不会使用预览过滤后的字幕。'
-                  : videoExportCopy.noVideo}
-              </p>
-            </div>
-          </div>
-
-          <p>{videoExportCopy.modeHint}</p>
-          {projectState.segments.length === 0 ? (
-            <p>{videoExportCopy.noSegments}</p>
-          ) : null}
-
-          <div className="inline-actions">
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={onExportBurnedVideo}
-              disabled={!canExportBurnedVideo}
-            >
-              {isVideoBurnExporting ? videoExportCopy.exporting : videoExportCopy.start}
-            </button>
-          </div>
-        </div>
-
-        {videoBurnExportResult ? (
-          <div className="success-banner" role="status">
-            <strong>{videoExportCopy.successTitle}</strong>
-            <p>{videoExportCopy.successDescription(videoBurnExportResult.fileName)}</p>
-            <code className="path-preview">{videoBurnExportResult.outputPath}</code>
-            <div className="inline-actions">
-              <button
-                type="button"
-                className="button button--secondary"
-                onClick={onOpenVideoBurnExportFolder}
-              >
-                {videoExportCopy.openFolder}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="info-panel">
-          <strong>{m.exportPage.extensionTitle}</strong>
+      {projectState.segments.length === 0 ? (
+        <div className="error-banner" role="alert">
+          <strong>{m.common.misc.noSubtitleContent}</strong>
           <p>
-            {exportFormat === 'word'
-              ? wordExportMode === 'transcript'
-                ? m.exportPage.extensionDescriptions.wordTranscript
-                : m.exportPage.extensionDescriptions.wordBilingualTable
-              : m.exportPage.extensionDescriptions.srt}
+            {exportTarget === 'video' ? copy.noSegments : m.exportPage.noSubtitleDescription}
           </p>
         </div>
-      </SectionCard>
+      ) : null}
 
-      <SectionCard
-        eyebrow={m.exportPage.sections.summary.eyebrow}
-        title={m.exportPage.sections.summary.title}
-        description={m.exportPage.sections.summary.description}
-        className="span-5"
-      >
-        {importResult ? (
-          <div className="summary-grid">
-            <div className="summary-item">
-              <span className="summary-item__label">{m.common.summary.sourceFile}</span>
-              <span className="summary-item__value">{importResult.currentFile.name}</span>
-            </div>
-            <div className="summary-item">
-              <span className="summary-item__label">{m.common.summary.route}</span>
-              <span className="summary-item__value">{workflowLabel}</span>
-            </div>
-            <div className="summary-item">
-              <span className="summary-item__label">{m.common.summary.subtitleRows}</span>
-              <span className="summary-item__value">{projectState.segments.length}</span>
-            </div>
-            <div className="summary-item">
-              <span className="summary-item__label">{m.common.summary.translatedRows}</span>
-              <span className="summary-item__value">
-                {translatedCount} / {projectState.segments.length}
-              </span>
-            </div>
-            <div className="summary-item">
-              <span className="summary-item__label">{m.common.summary.exportFormat}</span>
-              <span className="summary-item__value">{formatValue}</span>
-            </div>
-            <div className="summary-item">
-              <span className="summary-item__label">{m.common.summary.livePreviewEdits}</span>
-              <span className="summary-item__value">
-                {hasUnsavedChanges
-                  ? m.common.misc.includedInExport
-                  : m.common.misc.alreadySaved}
-              </span>
-            </div>
-            <div className="summary-item">
-              <span className="summary-item__label">{m.common.summary.projectStatus}</span>
-              <span className="summary-item__value">
-                {m.common.statuses[projectState.status]}
-              </span>
-            </div>
+      {exportTarget === 'subtitle' &&
+      outputMode === 'bilingual' &&
+      missingTranslationCount > 0 ? (
+        <div className="warning-banner" role="alert">
+          <strong>{m.common.misc.missingTranslatedLines}</strong>
+          <p>{m.exportPage.missingLinesDescription(missingTranslationCount)}</p>
+        </div>
+      ) : null}
+
+      {exportTarget === 'word' && missingTranslationCount > 0 ? (
+        <div className="warning-banner" role="alert">
+          <strong>{m.common.misc.missingTranslatedLines}</strong>
+          <p>{m.exportPage.wordMissingTranslationsDescription(missingTranslationCount)}</p>
+        </div>
+      ) : null}
+
+      {exportTarget === 'video' && !currentVideoPath ? (
+        <div className="warning-banner" role="alert">
+          <strong>{copy.videoSourceLabel}</strong>
+          <p>{copy.noOriginalVideo}</p>
+        </div>
+      ) : null}
+
+      {invalidTimelineCount > 0 && exportTarget !== 'video' ? (
+        <div
+          className={exportTarget === 'word' ? 'warning-banner' : 'error-banner'}
+          role="alert"
+        >
+          <strong>{m.common.misc.timelineNeedsAttention}</strong>
+          <p>
+            {exportTarget === 'word'
+              ? m.exportPage.wordInvalidTimelineDescription(invalidTimelineCount)
+              : m.exportPage.invalidTimelineDescription(invalidTimelineCount)}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="export-primary-row">
+        <div>
+          <strong>
+            {exportTarget === 'video'
+              ? copy.targets.video.title
+              : exportTarget === 'word'
+                ? copy.targets.word.title
+                : copy.targets.subtitle.title}
+          </strong>
+          <p>
+            {exportTarget === 'video'
+              ? copy.outputRulesDescription
+              : `${destinationDirectory} / ${effectiveFileName}`}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="button button--primary export-primary-button"
+          onClick={handlePrimaryExport}
+          disabled={primaryDisabled}
+        >
+          {primaryLabel}
+        </button>
+      </div>
+
+      {processError ? (
+        <div className="export-result-strip export-result-strip--error" role="alert">
+          <strong>{copy.failureTitle}</strong>
+          <p>{processError}</p>
+          <span>{copy.failureHint}</span>
+        </div>
+      ) : null}
+
+      {activeFileResult ? (
+        <div className="export-result-strip export-result-strip--success" role="status">
+          <strong>{copy.successTitle}</strong>
+          <p>{m.exportPage.lastExportDescription(activeFileResult.fileName)}</p>
+          <span>{copy.outputPathLabel}</span>
+          <code className="path-preview">{activeFileResult.path}</code>
+          {activeFileResult.conflictResolved || activeFileResult.sanitizedFileName ? (
+            <p>
+              {activeFileResult.conflictResolved ? resultNoteCopy.conflictResolved : null}
+              {activeFileResult.conflictResolved && activeFileResult.sanitizedFileName
+                ? ' '
+                : null}
+              {activeFileResult.sanitizedFileName ? resultNoteCopy.sanitized : null}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={onOpenExportFolder}
+          >
+            {copy.openFolder}
+          </button>
+        </div>
+      ) : null}
+
+      {activeVideoResult ? (
+        <div className="export-result-strip export-result-strip--success" role="status">
+          <strong>{copy.successTitle}</strong>
+          <p>{activeVideoResult.message}</p>
+          <span>{copy.outputPathLabel}</span>
+          <code className="path-preview">{activeVideoResult.outputPath}</code>
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={onOpenVideoBurnExportFolder}
+          >
+            {copy.openFolder}
+          </button>
+        </div>
+      ) : null}
+
+      <details className="export-details">
+        <summary>{copy.detailsTitle}</summary>
+        <div className="export-details__grid">
+          <div>
+            <span className="field-label">{copy.projectSummaryTitle}</span>
+            {importResult ? (
+              <>
+                <strong>{importResult.currentFile.name}</strong>
+                <p>
+                  {m.common.summary.route}: {workflowLabel || m.common.misc.notRecorded}
+                </p>
+                <p>
+                  {m.common.summary.projectStatus}: {m.common.statuses[projectState.status]}
+                </p>
+              </>
+            ) : (
+              <p>{m.exportPage.noProjectDescription}</p>
+            )}
           </div>
-        ) : (
-          <div className="empty-state">
-            <h3>{m.common.misc.noProjectLoaded}</h3>
-            <p>{m.exportPage.noProjectDescription}</p>
+
+          <div>
+            <span className="field-label">{copy.formatDetailsTitle}</span>
+            <strong>{exportTarget === 'video' ? copy.targets.video.title : formatValue}</strong>
+            <p>
+              {exportTarget === 'video'
+                ? copy.videoNotesDescription
+                : exportTarget === 'word'
+                  ? wordModeDescription
+                  : formatDescription}
+            </p>
           </div>
-        )}
-      </SectionCard>
-    </>
+
+          <div>
+            <span className="field-label">{copy.outputRulesTitle}</span>
+            <strong>{destinationDirectory}</strong>
+            <p>{copy.outputRulesDescription}</p>
+          </div>
+
+          <div>
+            <span className="field-label">{copy.videoNotesTitle}</span>
+            <strong>{copy.videoStyleDescription}</strong>
+            <p>{copy.videoNotesDescription}</p>
+          </div>
+        </div>
+      </details>
+    </SectionCard>
   )
 }

@@ -579,322 +579,234 @@ export function VideoSubtitleWorkspace({
   }
 
   return (
-    <>
-      <SectionCard
-        eyebrow={languageKey === 'zh' ? '视频字幕测试' : 'Video Subtitle Test'}
-        title={languageKey === 'zh' ? '开始前先看这里' : 'Check Before You Start'}
-        description={
-          languageKey === 'zh'
-            ? '先看这 4 项是否就绪，再决定是否开始测试。'
-            : 'Review these 4 readiness items first.'
-        }
-        className="span-12"
-      >
-        <div className="settings-grid">
-          {readinessItems.map((item) => (
-            <div className="info-tile" key={item.key}>
-              <span className="field-label">{item.label}</span>
-              <strong>{getReadyText(item.ready, languageKey)}</strong>
-              <p>{item.description}</p>
-              {!item.ready && item.nextStep ? <p>{item.nextStep}</p> : null}
-            </div>
-          ))}
-        </div>
+    <SectionCard
+      eyebrow={languageKey === 'zh' ? '视频字幕' : 'Video Subtitle'}
+      title={languageKey === 'zh' ? '准备生成字幕' : 'Prepare subtitle generation'}
+      description={pipelineCopy.description}
+      className="span-12 video-subtitle-workspace"
+    >
+      <div className="video-subtitle-status-row" aria-label={languageKey === 'zh' ? '当前状态' : 'Current status'}>
+        {readinessItems.map((item) => (
+          <span
+            key={item.key}
+            className={`status-chip ${item.ready ? 'status-chip--ready' : 'status-chip--blocked'}`}
+            title={`${item.description}${item.nextStep ? ` ${item.nextStep}` : ''}`}
+          >
+            <span>{item.label}</span>
+            <strong>{getReadyText(item.ready, languageKey)}</strong>
+          </span>
+        ))}
+      </div>
 
-        <div className="info-panel" style={{ marginTop: 20 }}>
-          <strong>
-            {languageKey === 'zh' ? '本次将走：' : 'Current pipeline: '}
-            {pipelineCopy.title}
-          </strong>
-          <p>{pipelineCopy.description}</p>
-          <p>{pipelineCopy.successNote}</p>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        eyebrow={languageKey === 'zh' ? '视频字幕' : 'Video Subtitle'}
-        title={pipelineCopy.title}
-        description={pipelineCopy.description}
-        className="span-7"
-      >
-        <form onSubmit={handleSubmit}>
-          <div className="settings-grid">
-            <label className="field-block">
-              <span className="field-label">
-                {languageKey === 'zh' ? '视频文件路径' : 'Video file path'}
-              </span>
-              <input
-                className="text-input"
-                type="text"
-                value={draft.videoPath}
-                onChange={(event) => {
-                  setLocalError(null)
-                  onDraftChange({ videoPath: event.target.value })
-                }}
-                placeholder="D:\media\demo.mp4"
-                spellCheck={false}
-                disabled={isWorking}
-              />
-              <p style={{ marginTop: 6, color: '#6b7280', fontSize: 12 }}>
-                {languageKey === 'zh'
-                  ? '视频请填写本机绝对路径，例如 D:\\media\\demo.mp4。'
-                  : 'Use a local absolute path such as D:\\media\\demo.mp4.'}
-              </p>
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">
-                {languageKey === 'zh' ? '源语言' : 'Source language'}
-              </span>
-              <select
-                className="select-input"
-                value={draft.sourceLanguage}
-                disabled={isWorking}
-                onChange={(event) => {
-                  const nextLanguage = event.target.value as VideoSubtitleDraft['sourceLanguage']
-                  setLocalError(null)
-                  onDraftChange({
-                    sourceLanguage: nextLanguage,
-                    outputMode: nextLanguage === 'zh' ? 'single' : 'bilingual',
-                    subtitlePath: nextLanguage === 'zh' ? '' : draft.subtitlePath,
-                  })
-                }}
-              >
-                <option value="zh">{languageKey === 'zh' ? '中文' : 'Chinese'}</option>
-                <option value="en">{languageKey === 'zh' ? '英语' : 'English'}</option>
-              </select>
-              <p style={{ marginTop: 6, color: '#6b7280', fontSize: 12 }}>
-                {languageKey === 'zh'
-                  ? '当前只支持中文视频或英语视频。切换语言时，输出模式会自动收敛到当前可用组合。'
-                  : 'Only Chinese or English is supported here. The output mode is kept on a supported combination automatically.'}
-              </p>
-            </label>
-
-            <label className="field-block">
-              <span className="field-label">
-                {languageKey === 'zh' ? '输出模式' : 'Output mode'}
-              </span>
-              <select
-                className="select-input"
-                value={draft.outputMode}
-                disabled={isWorking}
-                onChange={(event) => {
-                  const nextMode = event.target.value as VideoSubtitleDraft['outputMode']
-                  setLocalError(null)
-                  onDraftChange({
-                    outputMode: nextMode,
-                    sourceLanguage: nextMode === 'single' ? 'zh' : 'en',
-                    subtitlePath: nextMode === 'single' ? '' : draft.subtitlePath,
-                  })
-                }}
-              >
-                <option value="single" disabled={draft.sourceLanguage !== 'zh'}>
-                  {languageKey === 'zh' ? '单语（仅中文）' : 'Single-language (Chinese only)'}
-                </option>
-                <option value="bilingual" disabled={draft.sourceLanguage !== 'en'}>
-                  {languageKey === 'zh' ? '双语（仅英语）' : 'Bilingual (English only)'}
-                </option>
-              </select>
-              <p style={{ marginTop: 6, color: '#6b7280', fontSize: 12 }}>
-                {languageKey === 'zh'
-                  ? '当前只允许 中文 + 单语，或 英语 + 双语。非法组合会在这里直接限制。'
-                  : 'Only Chinese + single-language output or English + bilingual output is allowed.'}
-              </p>
-            </label>
-
-            <div className="info-panel">
-              <strong>{languageKey === 'zh' ? '当前允许的组合' : 'Allowed combinations'}</strong>
-              <p>
-                {languageKey === 'zh'
-                  ? '1. 中文 + 单语'
-                  : '1. Chinese + single-language output'}
-              </p>
-              <p>
-                {languageKey === 'zh'
-                  ? '2. 英语 + 双语'
-                  : '2. English + bilingual output'}
-              </p>
-              <p>
-                {languageKey === 'zh'
-                  ? '英语 + 双语时，可以额外填写英文 SRT；留空则走普通英语双语链路。'
-                  : 'When English + bilingual is selected, an English SRT is optional. Leave it empty to keep the standard English bilingual path.'}
-              </p>
-            </div>
-          </div>
-
-          {isEnglishBilingual ? (
-            <div className="settings-grid" style={{ marginTop: 20 }}>
-              <label className="field-block">
-                <span className="field-label">
-                  {languageKey === 'zh'
-                    ? '英文字幕文件（仅 .srt，可选）'
-                    : 'English subtitle file (.srt only, optional)'}
-                </span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={draft.subtitlePath}
-                  onChange={(event) => {
-                    setLocalError(null)
-                    onDraftChange({ subtitlePath: event.target.value })
-                  }}
-                  placeholder="D:\subtitle\demo.en.srt"
-                  spellCheck={false}
-                  disabled={isWorking}
-                />
-                <p style={{ marginTop: 6, color: '#6b7280', fontSize: 12 }}>
-                  {languageKey === 'zh'
-                    ? '英文字幕只支持 .srt。留空则走普通英语双语链路；填写后会走“导入英文 SRT -> 第一版重对齐 -> 中英字幕”链路。'
-                    : 'Only .srt is supported. Leave it empty for the standard English bilingual path, or fill it to use the imported-subtitle alignment path.'}
-                </p>
-              </label>
-
-              <div className="info-panel">
-                <strong>{languageKey === 'zh' ? '导入字幕分支说明' : 'Imported subtitle path'}</strong>
-                <p>
-                  {languageKey === 'zh'
-                    ? '这条分支会参考英语语音时间轴做第一版句段级重对齐。'
-                    : 'This path uses English speech timing for first-step segment alignment.'}
-                </p>
-                <p>
-                  {languageKey === 'zh'
-                    ? '当前仍是最小可用版本，不是精修级对齐。'
-                    : 'This is still a minimum viable alignment, not a studio-grade alignment workflow.'}
-                </p>
-              </div>
-            </div>
-          ) : null}
-
-          <div style={{ marginTop: 20 }}>
-            {friendlyError ? (
-              <div className="warning-banner" role="alert">
-                <strong>{friendlyError.title}</strong>
-                <p>{friendlyError.nextStep}</p>
-                {friendlyError.detail ? <p>{friendlyError.detail}</p> : null}
-              </div>
-            ) : (
-              <div className="info-panel">
-                <strong>{currentStatus.title}</strong>
-                <p>{currentStatus.description}</p>
-                {currentStatus.nextStep ? <p>{currentStatus.nextStep}</p> : null}
-              </div>
-            )}
-          </div>
-
-          <div className="info-panel" style={{ marginTop: 20 }}>
-            <strong>{languageKey === 'zh' ? '固定说明' : 'What happens next'}</strong>
-            <p>
+      <form className="video-subtitle-form" onSubmit={handleSubmit}>
+        <div className="video-subtitle-primary-grid">
+          <label className="field-block video-subtitle-path-field">
+            <span className="field-label">
+              {languageKey === 'zh' ? '视频文件路径' : 'Video file path'}
+            </span>
+            <input
+              className="text-input"
+              type="text"
+              value={draft.videoPath}
+              onChange={(event) => {
+                setLocalError(null)
+                onDraftChange({ videoPath: event.target.value })
+              }}
+              placeholder="D:\media\demo.mp4"
+              spellCheck={false}
+              disabled={isWorking}
+            />
+            <p className="helper-text">
               {languageKey === 'zh'
-                ? '成功后会自动进入 Preview，你可以继续检查字幕内容、时间轴和导出结果。'
-                : 'A successful run will jump to Preview so you can review timing, subtitle content, and export.'}
+                ? '请填写本机绝对路径，例如 D:\\media\\demo.mp4。'
+                : 'Use a local absolute path such as D:\\media\\demo.mp4.'}
             </p>
-          </div>
+          </label>
 
-          <div className="action-bar__buttons" style={{ marginTop: 20 }}>
+          <label className="field-block">
+            <span className="field-label">
+              {languageKey === 'zh' ? '源语言' : 'Source language'}
+            </span>
+            <select
+              className="select-input"
+              value={draft.sourceLanguage}
+              disabled={isWorking}
+              onChange={(event) => {
+                const nextLanguage = event.target.value as VideoSubtitleDraft['sourceLanguage']
+                setLocalError(null)
+                onDraftChange({
+                  sourceLanguage: nextLanguage,
+                  outputMode: nextLanguage === 'zh' ? 'single' : 'bilingual',
+                  subtitlePath: nextLanguage === 'zh' ? '' : draft.subtitlePath,
+                })
+              }}
+            >
+              <option value="zh">{languageKey === 'zh' ? '中文' : 'Chinese'}</option>
+              <option value="en">{languageKey === 'zh' ? '英语' : 'English'}</option>
+            </select>
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">
+              {languageKey === 'zh' ? '输出模式' : 'Output mode'}
+            </span>
+            <select
+              className="select-input"
+              value={draft.outputMode}
+              disabled={isWorking}
+              onChange={(event) => {
+                const nextMode = event.target.value as VideoSubtitleDraft['outputMode']
+                setLocalError(null)
+                onDraftChange({
+                  outputMode: nextMode,
+                  sourceLanguage: nextMode === 'single' ? 'zh' : 'en',
+                  subtitlePath: nextMode === 'single' ? '' : draft.subtitlePath,
+                })
+              }}
+            >
+              <option value="single" disabled={draft.sourceLanguage !== 'zh'}>
+                {languageKey === 'zh' ? '单语（中文）' : 'Single-language (Chinese)'}
+              </option>
+              <option value="bilingual" disabled={draft.sourceLanguage !== 'en'}>
+                {languageKey === 'zh' ? '双语（英语）' : 'Bilingual (English)'}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        {isEnglishBilingual ? (
+          <label className="field-block video-subtitle-subtitle-field">
+            <span className="field-label">
+              {languageKey === 'zh'
+                ? '英文字幕文件（可选，仅 .srt）'
+                : 'English subtitle file (optional, .srt only)'}
+            </span>
+            <input
+              className="text-input"
+              type="text"
+              value={draft.subtitlePath}
+              onChange={(event) => {
+                setLocalError(null)
+                onDraftChange({ subtitlePath: event.target.value })
+              }}
+              placeholder="D:\subtitle\demo.en.srt"
+              spellCheck={false}
+              disabled={isWorking}
+            />
+            <p className="helper-text">
+              {languageKey === 'zh'
+                ? '留空会直接生成中英字幕；填写英文 SRT 后会参考英语语音时间轴做第一版重对齐。'
+                : 'Leave it empty for normal bilingual subtitles, or provide an English SRT for first-step alignment.'}
+            </p>
+          </label>
+        ) : null}
+
+        <div className="video-subtitle-callout">
+          {friendlyError ? (
+            <div className="warning-banner video-subtitle-message" role="alert">
+              <strong>{friendlyError.title}</strong>
+              <p>{friendlyError.nextStep}</p>
+              {friendlyError.detail ? <p>{friendlyError.detail}</p> : null}
+            </div>
+          ) : (
+            <div className="info-panel video-subtitle-message">
+              <strong>{currentStatus.title}</strong>
+              <p>{currentStatus.description}</p>
+              {currentStatus.nextStep ? <p>{currentStatus.nextStep}</p> : null}
+            </div>
+          )}
+        </div>
+
+        <div className="video-subtitle-action-row">
+          <div className="video-subtitle-action-copy">
+            <strong>{pipelineCopy.title}</strong>
+            <span>
+              {languageKey === 'zh'
+                ? '生成完成后会自动进入预览，你可以继续检查和导出。'
+                : 'A successful run will jump to Preview so you can review and export.'}
+            </span>
+          </div>
+          <div className="video-subtitle-actions">
             <button
               type="button"
-              className="button button--secondary"
+              className="button button--ghost"
               onClick={onOpenSettings}
               disabled={isWorking}
             >
               {languageKey === 'zh' ? '打开设置' : 'Open settings'}
             </button>
-            <button type="submit" className="button button--primary" disabled={!canStart}>
-              {languageKey === 'zh' ? '开始生成字幕' : 'Start subtitle generation'}
+            <button
+              type="submit"
+              className="button button--primary video-subtitle-primary-button"
+              disabled={!canStart}
+            >
+              {isWorking
+                ? languageKey === 'zh'
+                  ? '正在生成字幕...'
+                  : 'Generating subtitles...'
+                : languageKey === 'zh'
+                  ? '开始生成字幕'
+                  : 'Start subtitle generation'}
             </button>
           </div>
-        </form>
-      </SectionCard>
+        </div>
+      </form>
 
-      <SectionCard
-        eyebrow={languageKey === 'zh' ? '视频字幕' : 'Video Subtitle'}
-        title={languageKey === 'zh' ? '当前配置摘要' : 'Current config summary'}
-        description={
-          languageKey === 'zh'
-            ? '这里显示当前会用到哪些配置，以及它们现在到底能不能开始。'
-            : 'This shows which configs will be used and whether they are actually ready.'
-        }
-        className="span-5"
-      >
-        {config ? (
-          <div className="settings-grid">
-            <div className="info-tile">
-              <span className="field-label">
-                {languageKey === 'zh' ? '当前识别 provider' : 'Speech provider'}
-              </span>
-              <strong>{getSpeechProviderLabel(provider, languageKey)}</strong>
-              <p>{getReadyText(recognitionReady, languageKey)}</p>
-              <p>
-                {usingLocalProvider
-                  ? languageKey === 'zh'
-                    ? '当前使用本地识别链路。'
-                    : 'The local recognition path is active.'
-                  : languageKey === 'zh'
-                    ? '当前使用云端识别链路。'
-                    : 'The cloud recognition path is active.'}
-              </p>
-            </div>
-
-            <div className="info-tile">
-              <span className="field-label">
-                {languageKey === 'zh' ? '识别环境状态' : 'Speech readiness'}
-              </span>
-              <strong>{getReadyText(recognitionReady, languageKey)}</strong>
-              <p>
-                {recognitionReady
-                  ? languageKey === 'zh'
-                    ? '识别环境已经准备好，可以直接开始。'
-                    : 'Speech recognition is ready to start.'
-                  : languageKey === 'zh'
-                    ? '识别环境还没准备好，请先看左侧状态提示。'
-                    : 'Speech recognition is not ready yet.'}
-              </p>
-            </div>
-
-            <div className="info-tile">
-              <span className="field-label">
-                {languageKey === 'zh' ? '当前翻译 provider' : 'Translation provider'}
-              </span>
-              <strong>
-                {translationNeeded
-                  ? getTranslationProviderLabel(config.defaultProvider, languageKey)
-                  : languageKey === 'zh'
-                    ? '当前不需要'
-                    : 'Not needed'}
-              </strong>
-              <p>{getReadyText(translationConfigReady, languageKey)}</p>
-              <p>
-                {translationNeeded
-                  ? translationConfigReady
-                    ? `${config.model} / ${config.baseUrl}`
-                    : languageKey === 'zh'
-                      ? '当前英语双语链路还不能继续翻译。'
-                      : 'Translation is still not ready.'
-                  : languageKey === 'zh'
-                    ? '当前是中文字幕链路，不需要翻译。'
-                    : 'Translation is not used for this selection.'}
-              </p>
-            </div>
-
-            <div className="info-tile">
-              <span className="field-label">
-                {languageKey === 'zh' ? '成功后会发生什么' : 'After success'}
-              </span>
-              <strong>{languageKey === 'zh' ? '自动进入 Preview' : 'Go to Preview automatically'}</strong>
-              <p>{pipelineCopy.successNote}</p>
-            </div>
+      <details className="video-subtitle-details">
+        <summary>
+          {languageKey === 'zh'
+            ? '查看当前设置与支持范围'
+            : 'View current settings and supported modes'}
+        </summary>
+        <div className="video-subtitle-details__grid">
+          <div>
+            <span className="field-label">
+              {languageKey === 'zh' ? '识别服务商' : 'Speech provider'}
+            </span>
+            <strong>{getSpeechProviderLabel(provider, languageKey)}</strong>
+            <p>{getReadyText(recognitionReady, languageKey)}</p>
           </div>
-        ) : (
-          <div className="empty-state">
-            <h3>{languageKey === 'zh' ? '正在读取配置' : 'Loading config'}</h3>
+          <div>
+            <span className="field-label">
+              {languageKey === 'zh' ? '翻译服务商' : 'Translation provider'}
+            </span>
+            <strong>
+              {translationNeeded && config
+                ? getTranslationProviderLabel(config.defaultProvider, languageKey)
+                : languageKey === 'zh'
+                  ? '当前不需要'
+                  : 'Not needed'}
+            </strong>
             <p>
-              {languageKey === 'zh'
-                ? '请稍候，应用正在读取当前识别和翻译配置。'
-                : 'Please wait while the app loads the current speech and translation config.'}
+              {translationNeeded && config
+                ? `${config.model} / ${config.baseUrl}`
+                : getReadyText(translationConfigReady, languageKey)}
             </p>
           </div>
-        )}
-      </SectionCard>
-    </>
+          <div>
+            <span className="field-label">
+              {languageKey === 'zh' ? '支持范围' : 'Supported modes'}
+            </span>
+            <strong>
+              {languageKey === 'zh'
+                ? '中文单语、英语双语'
+                : 'Chinese single, English bilingual'}
+            </strong>
+            <p>
+              {languageKey === 'zh'
+                ? '英语双语可选英文 SRT。'
+                : 'English bilingual output can optionally use an English SRT.'}
+            </p>
+          </div>
+          <div>
+            <span className="field-label">
+              {languageKey === 'zh' ? '当前链路' : 'Current path'}
+            </span>
+            <strong>{pipelineCopy.title}</strong>
+            <p>{pipelineCopy.description}</p>
+          </div>
+        </div>
+      </details>
+    </SectionCard>
   )
 }

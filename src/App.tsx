@@ -159,13 +159,13 @@ function getVideoSubtitleWorkspaceCopy(
   return language === 'zh'
     ? {
         current: 2,
-        title: '视频字幕',
-        description: '用最小链路生成与语音对齐的中文字幕，或中英字幕。',
+        title: '生成视频字幕',
+        description: '选一个视频，确认语言后开始生成字幕。',
       }
     : {
         current: 2,
-        title: 'Video subtitle',
-        description: 'Generate speech-aligned Chinese or bilingual subtitles with the smallest path.',
+        title: 'Generate video subtitles',
+        description: 'Choose a video, confirm the language, then start subtitle generation.',
       }
 }
 
@@ -589,8 +589,8 @@ function buildHeaderMetrics(
   importResult: ImportResult | null,
   projectState: ProjectState,
   outputMode: OutputMode,
-  exportFormat: ExportFormat,
-  wordExportMode: WordExportMode,
+  _exportFormat: ExportFormat,
+  _wordExportMode: WordExportMode,
   config: AppConfig | null,
   translationRun: TranslationRunMeta,
   exportResult: ExportRunMeta,
@@ -601,40 +601,46 @@ function buildHeaderMetrics(
     return language === 'zh'
       ? [
           {
-            label: '当前能力',
-            value: '中文单语 / 英语双语',
-            hint: '当前只支持 中文 + 单语，或 英语 + 双语。外部字幕导入与重对齐还未接入。',
+            label: '模式',
+            value: '中文单语',
+            hint: '当前支持中文视频生成中文字幕。',
           },
           {
-            label: m.common.misc.provider,
-            value: config?.defaultTranscriptionProvider ?? m.common.misc.loading,
-            hint: `识别继续复用设置页；英语双语时还会继续复用当前翻译 provider：${
-              config?.defaultProvider ?? m.common.misc.loading
-            }`,
+            label: '模式',
+            value: '英语双语',
+            hint: '当前支持英语视频生成中英字幕，英文 SRT 可选。',
           },
           {
-            label: m.common.summary.nextStage,
-            value: '预览 / 导出',
-            hint: '生成完成后会直接进入现有预览页，再沿用现有导出页。',
+            label: '翻译',
+            value: config?.defaultProvider ?? m.common.misc.loading,
+            hint: '英语双语会使用设置页里的翻译配置。',
+          },
+          {
+            label: '完成后',
+            value: '进入预览',
+            hint: '生成完成后会自动进入预览页。',
           },
         ]
       : [
           {
-            label: 'Current capability',
-            value: 'Chinese single / English bilingual',
-            hint: 'This phase supports Chinese + single-language output, or English + bilingual output.',
+            label: 'Mode',
+            value: 'Chinese single',
+            hint: 'Generate Chinese subtitles from Chinese videos.',
           },
           {
-            label: m.common.misc.provider,
-            value: config?.defaultTranscriptionProvider ?? m.common.misc.loading,
-            hint: `Speech settings are reused from Settings. English bilingual runs also reuse the current translation provider: ${
-              config?.defaultProvider ?? m.common.misc.loading
-            }.`,
+            label: 'Mode',
+            value: 'English bilingual',
+            hint: 'Generate bilingual subtitles from English videos. English SRT is optional.',
           },
           {
-            label: m.common.summary.nextStage,
-            value: 'Preview / Export',
-            hint: 'A successful run will go straight into the existing preview page.',
+            label: 'Translation',
+            value: config?.defaultProvider ?? m.common.misc.loading,
+            hint: 'English bilingual output uses the translation setup from Settings.',
+          },
+          {
+            label: 'After',
+            value: 'Preview',
+            hint: 'A successful run will jump to Preview automatically.',
           },
         ]
   }
@@ -710,17 +716,12 @@ function buildHeaderMetrics(
     const translatedCount = projectState.segments.filter((segment) => segment.translatedText).length
     return [
       {
-        label: m.common.summary.exportFormat,
-        value:
-          exportFormat === 'word'
-            ? m.exportPage.fileFormatValues.word
-            : m.exportPage.fileFormatValues.srt,
+        label: language === 'zh' ? '导出' : 'Export',
+        value: 'SRT / Word / MP4',
         hint:
-          exportFormat === 'word'
-            ? `${m.exportPage.wordModeLabel}: ${getWordExportModeLabel(wordExportMode, m)}`
-            : outputMode === 'bilingual'
-              ? `${m.common.summary.outputMode}: ${m.common.outputModes.bilingual}`
-              : `${m.common.summary.outputMode}: ${m.common.outputModes.single}`,
+          language === 'zh'
+            ? '导出页内选择具体类型后再生成文件。'
+            : 'Choose the exact export type inside the Export page.',
       },
       {
         label: m.common.summary.subtitlePackage,
@@ -737,22 +738,38 @@ function buildHeaderMetrics(
 
   return [
     {
-      label: m.common.misc.supportedInput,
-      value: `${m.common.misc.video} / ${m.common.misc.audio} / SRT`,
-      hint: m.app.labels.supportedInputHint,
+      label: language === 'zh' ? '输入' : 'Input',
+      value: language === 'zh' ? '视频' : 'Video',
+      hint: language === 'zh' ? '支持 MP4、MOV、MKV。' : 'MP4, MOV, and MKV are supported.',
     },
     {
-      label: m.common.summary.currentFile,
+      label: language === 'zh' ? '输入' : 'Input',
+      value: language === 'zh' ? '音频' : 'Audio',
+      hint: language === 'zh' ? '支持 MP3、WAV、M4A。' : 'MP3, WAV, and M4A are supported.',
+    },
+    {
+      label: language === 'zh' ? '输入' : 'Input',
+      value: 'SRT',
+      hint: language === 'zh' ? '支持 SRT 字幕文件。' : 'SRT subtitle files are supported.',
+    },
+    {
+      label: language === 'zh' ? '文件' : 'File',
       value: importResult ? importResult.currentFile.name : m.common.misc.notSelected,
       hint: importResult ? importResult.currentFile.path : m.app.notes.importNeedFile,
     },
     {
-      label: m.common.summary.nextStage,
+      label: language === 'zh' ? '下一步' : 'Next',
       value: importResult
         ? importResult.route === 'recognition'
-          ? m.app.routes.recognitionToTranslation
-          : m.app.routes.srtParseToTranslation
-        : m.app.labels.nextStageWaiting,
+          ? language === 'zh'
+            ? '识别 / 翻译'
+            : 'Recognition / Translation'
+          : language === 'zh'
+            ? 'SRT 翻译'
+            : 'SRT Translation'
+        : language === 'zh'
+          ? '自动判断流程'
+          : 'Auto route',
       hint: importResult
         ? getWorkflowLabel(importResult.workflow, m)
         : m.importPage.workflowWaitingDescription,
@@ -2537,7 +2554,7 @@ function App() {
     }
   }
 
-  async function handleExport() {
+  async function handleExport(formatOverride?: ExportFormat) {
     if (projectState.segments.length === 0) {
       const message = m.app.errors.noSubtitleSegmentsToExport
       setProcessError(message)
@@ -2573,9 +2590,10 @@ function App() {
 
     try {
       const exportSegments = projectState.segments
+      const requestedExportFormat = formatOverride ?? selectedExportFormat
       logExportDebugSummary(
         exportSegments,
-        selectedExportFormat,
+        requestedExportFormat,
         selectedOutputMode,
       )
 
@@ -2587,7 +2605,7 @@ function App() {
           outputFormats: Array.from(
             new Set([
               ...(currentTaskRef.current?.outputFormats ?? []),
-              selectedExportFormat === 'word'
+              requestedExportFormat === 'word'
                 ? `word:${selectedWordExportMode}`
                 : selectedOutputMode === 'bilingual'
                   ? 'srt:bilingual'
@@ -2599,7 +2617,7 @@ function App() {
           buildTaskLogEntry(
             'info',
             '正在导出文件。',
-            `格式：${selectedExportFormat}\n文件名：${
+            `格式：${requestedExportFormat}\n文件名：${
               safeTrim(exportFileName) || '自动命名'
             }`,
           ),
@@ -2608,7 +2626,7 @@ function App() {
 
       const result = await exportSubtitles({
         segments: exportSegments,
-        format: selectedExportFormat,
+        format: requestedExportFormat,
         bilingual: selectedOutputMode === 'bilingual',
         wordMode: selectedWordExportMode,
         sourceFilePath: importResult?.currentFile.path ?? null,
@@ -3107,6 +3125,13 @@ function App() {
           statusTone={statusTone}
           statusHint={statusHint}
           metrics={headerMetrics}
+          metricsVariant={
+            resolvedWorkspace === 'videoSubtitle' ||
+            resolvedWorkspace === 'import' ||
+            resolvedWorkspace === 'export'
+              ? 'chips'
+              : 'cards'
+          }
         />
 
         {startupNotice ? (
@@ -3193,6 +3218,9 @@ function App() {
               }}
               onOpenTaskExportFolder={(task) => {
                 void handleOpenTaskExportFolder(task)
+              }}
+              onContinue={() => {
+                navigateToWorkspace('translation')
               }}
             />
           ) : null}
@@ -3333,8 +3361,16 @@ function App() {
                   setProcessError(null)
                 })
               }}
+              onExportSubtitles={(format) => {
+                void handleExport(format)
+              }}
               onExportBurnedVideo={() => {
                 void handleBurnSubtitleVideoExport()
+              }}
+              onClearExportError={() => {
+                startTransition(() => {
+                  setProcessError(null)
+                })
               }}
             />
           ) : null}
@@ -3368,7 +3404,9 @@ function App() {
           ) : null}
         </section>
 
-        {resolvedWorkspace !== 'videoSubtitle' ? (
+        {resolvedWorkspace !== 'videoSubtitle' &&
+        resolvedWorkspace !== 'import' &&
+        resolvedWorkspace !== 'export' ? (
           <ActionBar
             previousLabel={m.common.buttons.previousStep}
             secondaryLabel={secondaryLabel}
@@ -3380,11 +3418,6 @@ function App() {
             onPreviousClick={() => {
               if (resolvedWorkspace === 'settings') {
                 navigateToWorkspace(lastMainWorkspace)
-                return
-              }
-
-              if (resolvedWorkspace === 'export') {
-                navigateToWorkspace('preview')
                 return
               }
 
@@ -3406,14 +3439,6 @@ function App() {
                 return
               }
 
-              if (resolvedWorkspace === 'export') {
-                startTransition(() => {
-                  setExportFileName('')
-                  setProcessError(null)
-                })
-                return
-              }
-
               if (resolvedWorkspace === 'settings') {
                 void hydrateConfig()
                 return
@@ -3422,11 +3447,6 @@ function App() {
               navigateToWorkspace('settings')
             }}
             onPrimaryClick={() => {
-              if (resolvedWorkspace === 'import') {
-                navigateToWorkspace('translation')
-                return
-              }
-
               if (resolvedWorkspace === 'translation') {
                 void handleStartTranslation()
                 return
@@ -3434,11 +3454,6 @@ function App() {
 
               if (resolvedWorkspace === 'preview') {
                 navigateToWorkspace('export')
-                return
-              }
-
-              if (resolvedWorkspace === 'export') {
-                void handleExport()
                 return
               }
 
