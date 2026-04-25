@@ -1251,9 +1251,11 @@ ol {
 
 .export-result-strip {
   margin-top: 0;
+  min-width: 0;
   display: grid;
   gap: 8px;
   padding: 14px 16px;
+  box-sizing: border-box;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-xs);
@@ -1278,6 +1280,21 @@ ol {
 
 .export-result-strip .button {
   width: fit-content;
+  margin-top: 2px;
+  align-self: flex-start;
+}
+
+.export-result-strip .path-preview {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .export-details {
