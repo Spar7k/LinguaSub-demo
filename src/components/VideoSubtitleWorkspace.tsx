@@ -585,20 +585,9 @@ export function VideoSubtitleWorkspace({
       description={pipelineCopy.description}
       className="span-12 video-subtitle-workspace"
     >
-      <div className="video-subtitle-status-row" aria-label={languageKey === 'zh' ? '当前状态' : 'Current status'}>
-        {readinessItems.map((item) => (
-          <span
-            key={item.key}
-            className={`status-chip ${item.ready ? 'status-chip--ready' : 'status-chip--blocked'}`}
-            title={`${item.description}${item.nextStep ? ` ${item.nextStep}` : ''}`}
-          >
-            <span>{item.label}</span>
-            <strong>{getReadyText(item.ready, languageKey)}</strong>
-          </span>
-        ))}
-      </div>
-
       <form className="video-subtitle-form" onSubmit={handleSubmit}>
+        <div className="video-subtitle-layout">
+          <div className="video-subtitle-layout__primary">
         <div className="video-subtitle-primary-grid">
           <label className="field-block video-subtitle-path-field">
             <span className="field-label">
@@ -701,22 +690,6 @@ export function VideoSubtitleWorkspace({
           </label>
         ) : null}
 
-        <div className="video-subtitle-callout">
-          {friendlyError ? (
-            <div className="warning-banner video-subtitle-message" role="alert">
-              <strong>{friendlyError.title}</strong>
-              <p>{friendlyError.nextStep}</p>
-              {friendlyError.detail ? <p>{friendlyError.detail}</p> : null}
-            </div>
-          ) : (
-            <div className="info-panel video-subtitle-message">
-              <strong>{currentStatus.title}</strong>
-              <p>{currentStatus.description}</p>
-              {currentStatus.nextStep ? <p>{currentStatus.nextStep}</p> : null}
-            </div>
-          )}
-        </div>
-
         <div className="video-subtitle-action-row">
           <div className="video-subtitle-action-copy">
             <strong>{pipelineCopy.title}</strong>
@@ -748,6 +721,42 @@ export function VideoSubtitleWorkspace({
                   ? '开始生成字幕'
                   : 'Start subtitle generation'}
             </button>
+          </div>
+        </div>
+          </div>
+
+          <div className="video-subtitle-layout__aside">
+            <div
+              className="video-subtitle-status-row"
+              aria-label={languageKey === 'zh' ? '当前状态' : 'Current status'}
+            >
+              {readinessItems.map((item) => (
+                <span
+                  key={item.key}
+                  className={`status-chip ${item.ready ? 'status-chip--ready' : 'status-chip--blocked'}`}
+                  title={`${item.description}${item.nextStep ? ` ${item.nextStep}` : ''}`}
+                >
+                  <span>{item.label}</span>
+                  <strong>{getReadyText(item.ready, languageKey)}</strong>
+                </span>
+              ))}
+            </div>
+
+            <div className="video-subtitle-callout">
+              {friendlyError ? (
+                <div className="warning-banner video-subtitle-message" role="alert">
+                  <strong>{friendlyError.title}</strong>
+                  <p>{friendlyError.nextStep}</p>
+                  {friendlyError.detail ? <p>{friendlyError.detail}</p> : null}
+                </div>
+              ) : (
+                <div className="info-panel video-subtitle-message">
+                  <strong>{currentStatus.title}</strong>
+                  <p>{currentStatus.description}</p>
+                  {currentStatus.nextStep ? <p>{currentStatus.nextStep}</p> : null}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </form>
