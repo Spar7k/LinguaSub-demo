@@ -742,7 +742,9 @@ export function ImportWorkspace({
         className="span-12 import-workspace"
       >
         <form className="import-form import-form--focused" onSubmit={handleImportSubmit}>
-          <div
+          <div className="import-layout">
+            <div className="import-layout__primary">
+              <div
             className={`import-dropzone${isDragActive ? ' import-dropzone--active' : ''}`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
@@ -808,14 +810,16 @@ export function ImportWorkspace({
             </label>
           </details>
 
-          {importError ? (
-            <div className="error-banner" role="alert">
-              <strong>{m.common.misc.importFailed}</strong>
-              <p>{importError}</p>
+              {importError ? (
+                <div className="error-banner" role="alert">
+                  <strong>{m.common.misc.importFailed}</strong>
+                  <p>{importError}</p>
+                </div>
+              ) : null}
             </div>
-          ) : null}
 
-          <div className={`import-file-panel${importResult ? '' : ' import-file-panel--empty'}`}>
+            <div className="import-layout__aside">
+              <div className={`import-file-panel${importResult ? '' : ' import-file-panel--empty'}`}>
             {importResult ? (
               <>
                 <div className="import-file-panel__head">
@@ -860,10 +864,11 @@ export function ImportWorkspace({
                 <p>{m.importPage.emptySummaryDescription}</p>
               </div>
             )}
+              </div>
+            </div>
           </div>
-        </form>
 
-        <details className="import-details">
+          <details className="import-details">
           <summary>
             {language === 'zh'
               ? '查看支持格式与环境信息'
@@ -1365,7 +1370,8 @@ export function ImportWorkspace({
               )}
             </section>
           </div>
-        </details>
+          </details>
+        </form>
       </SectionCard>
 
       <SectionCard

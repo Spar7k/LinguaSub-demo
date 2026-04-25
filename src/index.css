@@ -827,6 +827,22 @@ ol {
   gap: 18px;
 }
 
+.import-layout {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.import-layout__primary,
+.import-layout__aside {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
 .import-dropzone {
   padding: 18px;
   border-radius: 20px;
@@ -2527,6 +2543,7 @@ ol {
   .quick-actions,
   .file-grid,
   .path-grid,
+  .import-layout,
   .import-file-grid,
   .video-subtitle-primary-grid,
   .workflow-example-grid,
