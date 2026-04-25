@@ -4,7 +4,12 @@ Expected layout:
 
 runtime/
 `-- ffmpeg/
-    `-- ffmpeg.exe
+    |-- ffmpeg.exe
+    `-- ffprobe.exe
 
-Place the Windows FFmpeg binary at `src-tauri/resources/runtime/ffmpeg/ffmpeg.exe`
+Place the Windows FFmpeg and FFprobe binaries at:
+
+- `src-tauri/resources/runtime/ffmpeg/ffmpeg.exe`
+- `src-tauri/resources/runtime/ffmpeg/ffprobe.exe`
+
 before running the release packaging flow.
