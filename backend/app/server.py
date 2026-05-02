@@ -17,6 +17,11 @@ from .import_service import (
     import_file,
 )
 from .models import AppConfig, SubtitleSegment
+from .agent_service import (
+    AgentInputError,
+    analyze_subtitle_quality,
+    summarize_subtitle_content,
+)
 from .export_service import ExportServiceError, export_subtitles
 from .srt_service import (
     SrtServiceError,
@@ -186,6 +191,14 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
 
             if self.path == "/export":
                 self._handle_export()
+                return
+
+            if self.path == "/agent/subtitle-quality":
+                self._handle_agent_subtitle_quality()
+                return
+
+            if self.path == "/agent/content-summary":
+                self._handle_agent_content_summary()
                 return
 
             if self.path != "/translate":
@@ -634,6 +647,94 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
                 "status": "done",
             }
         )
+
+    def _read_agent_request_payload(
+        self,
+    ) -> tuple[
+        list[SubtitleSegment],
+        AppConfig,
+        str | None,
+        str | None,
+        str | None,
+        Any,
+    ]:
+        payload = self._read_json_body()
+        config = AppConfig.from_dict(payload["config"])
+        segments = [
+            SubtitleSegment.from_dict(item) for item in payload.get("segments", [])
+        ]
+        return (
+            segments,
+            config,
+            payload.get("sourceLanguage"),
+            payload.get("targetLanguage"),
+            payload.get("bilingualMode"),
+            payload.get("timeoutSeconds", 60),
+        )
+
+    def _handle_agent_subtitle_quality(self) -> None:
+        try:
+            (
+                segments,
+                config,
+                source_language,
+                target_language,
+                bilingual_mode,
+                timeout_seconds,
+            ) = self._read_agent_request_payload()
+        except (KeyError, TypeError, ValueError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+
+        try:
+            result = analyze_subtitle_quality(
+                segments=segments,
+                config=config,
+                source_language=source_language,
+                target_language=target_language,
+                bilingual_mode=bilingual_mode,
+                timeout_seconds=timeout_seconds,
+            )
+        except AgentInputError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        except TranslationServiceError as exc:
+            self._send_error_json(HTTPStatus.BAD_GATEWAY, str(exc))
+            return
+
+        self._send_json(result)
+
+    def _handle_agent_content_summary(self) -> None:
+        try:
+            (
+                segments,
+                config,
+                source_language,
+                target_language,
+                bilingual_mode,
+                timeout_seconds,
+            ) = self._read_agent_request_payload()
+        except (KeyError, TypeError, ValueError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+
+        try:
+            result = summarize_subtitle_content(
+                segments=segments,
+                config=config,
+                source_language=source_language,
+                target_language=target_language,
+                bilingual_mode=bilingual_mode,
+                timeout_seconds=timeout_seconds,
+            )
+        except AgentInputError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        except TranslationServiceError as exc:
+            self._send_error_json(HTTPStatus.BAD_GATEWAY, str(exc))
+            return
+
+        self._send_json(result)
 
     def _read_json_body(self) -> dict[str, Any]:
         content_length = int(self.headers.get("Content-Length", "0"))

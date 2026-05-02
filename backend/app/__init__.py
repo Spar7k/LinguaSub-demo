@@ -8,6 +8,14 @@ from .environment_service import (
     build_startup_check,
     detect_runtime_mode,
 )
+from .agent_service import (
+    AgentInputError,
+    AgentServiceError,
+    analyzeSubtitleQuality,
+    analyze_subtitle_quality,
+    summarizeSubtitleContent,
+    summarize_subtitle_content,
+)
 from .export_service import (
     EmptySubtitleExportError,
     ExportResult,
@@ -76,6 +84,12 @@ __all__ = [
     "TranslationTask",
     "create_default_app_config",
     "create_empty_project_state",
+    "AgentInputError",
+    "AgentServiceError",
+    "analyzeSubtitleQuality",
+    "analyze_subtitle_quality",
+    "summarizeSubtitleContent",
+    "summarize_subtitle_content",
     "EmptySubtitleExportError",
     "ExportResult",
     "ExportServiceError",
