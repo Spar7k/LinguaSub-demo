@@ -9,11 +9,12 @@ from unittest.mock import patch
 from backend.app.agent_service import (
     AgentChatCompletionClient,
     AgentInputError,
+    FRIENDLY_AGENT_JSON_ERROR,
     analyze_subtitle_quality,
     summarize_subtitle_content,
 )
 from backend.app.models import SubtitleSegment, create_default_app_config
-from backend.app.translation_service import TranslationParseError
+from backend.app.translation_service import ProviderApiError, TranslationParseError
 
 
 class AgentServiceTests(unittest.TestCase):
@@ -179,7 +180,45 @@ class AgentServiceTests(unittest.TestCase):
         )
         payload = mock_post_json.call_args.kwargs["payload"]
         self.assertEqual(payload["response_format"], {"type": "json_object"})
+        self.assertIn("max_tokens", payload)
         self.assertFalse(payload["stream"])
+
+    def test_quality_prompt_limits_issue_count_and_markdown(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            return_value=self.build_quality_response(issues=[]),
+        ) as mock_post_json:
+            analyze_subtitle_quality(
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+        payload = mock_post_json.call_args.kwargs["payload"]
+        system_prompt = payload["messages"][0]["content"]
+        user_prompt = self.extract_prompt(mock_post_json)
+        self.assertIn("at most 12 issues", system_prompt)
+        self.assertIn("Do not include markdown", system_prompt)
+        self.assertIn("Return at most 12 issues", user_prompt["instruction"])
+
+    def test_summary_prompt_limits_output_and_markdown(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            return_value=self.build_summary_response(),
+        ) as mock_post_json:
+            summarize_subtitle_content(
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+        payload = mock_post_json.call_args.kwargs["payload"]
+        system_prompt = payload["messages"][0]["content"]
+        user_prompt = self.extract_prompt(mock_post_json)
+        self.assertIn("at most 6 chapters", system_prompt)
+        self.assertIn("at most 12 keywords", system_prompt)
+        self.assertIn("Do not include markdown", system_prompt)
+        self.assertIn("Return at most 6 chapters", user_prompt["instruction"])
 
     def test_subtitle_quality_parses_normal_json(self) -> None:
         with patch.object(
@@ -196,6 +235,49 @@ class AgentServiceTests(unittest.TestCase):
         self.assertEqual(result["summary"], "Overall quality is good.")
         self.assertEqual(result["issues"][0]["segmentId"], "seg-001")
         self.assertEqual(result["issues"][0]["type"], "too_long")
+
+    def test_subtitle_quality_retries_invalid_json_once_and_succeeds(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            side_effect=[
+                self.build_chat_response('{"score": 65, "summary": "cut", "issues": ['),
+                self.build_quality_response(score=65, issues=[]),
+            ],
+        ) as mock_post_json:
+            result = analyze_subtitle_quality(
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+        self.assertEqual(mock_post_json.call_count, 2)
+        retry_prompt = self.extract_prompt(mock_post_json, call_index=1)
+        self.assertIn("previous response was not valid JSON", retry_prompt["instruction"])
+        self.assertEqual(result["score"], 65)
+        self.assertTrue(result["diagnostics"]["parseRetryAttempted"])
+        self.assertTrue(result["diagnostics"]["parseRetrySucceeded"])
+        self.assertEqual(result["diagnostics"]["parseRetryAttemptedChunks"], [1])
+
+    def test_content_summary_retries_invalid_json_once_and_succeeds(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            side_effect=[
+                self.build_chat_response('{"oneSentenceSummary": "cut", "chapters": ['),
+                self.build_summary_response(one_sentence="Recovered summary."),
+            ],
+        ) as mock_post_json:
+            result = summarize_subtitle_content(
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+        self.assertEqual(mock_post_json.call_count, 2)
+        retry_prompt = self.extract_prompt(mock_post_json, call_index=1)
+        self.assertIn("previous response was not valid JSON", retry_prompt["instruction"])
+        self.assertEqual(result["oneSentenceSummary"], "Recovered summary.")
+        self.assertTrue(result["diagnostics"]["parseRetryAttempted"])
+        self.assertTrue(result["diagnostics"]["parseRetrySucceeded"])
 
     def test_subtitle_quality_accepts_fenced_json(self) -> None:
         content = """```json
@@ -474,19 +556,78 @@ class AgentServiceTests(unittest.TestCase):
         self.assertEqual(result["studyNotes"], "")
         self.assertFalse(result["diagnostics"]["chunked"])
 
-    def test_invalid_agent_json_raises_clear_parse_error(self) -> None:
+    def test_invalid_agent_json_retry_failure_returns_friendly_error(self) -> None:
         with patch.object(
             AgentChatCompletionClient,
             "_post_json",
-            return_value=self.build_chat_response("not json"),
-        ):
+            side_effect=[
+                self.build_chat_response('{"score": 65, "issues": ['),
+                self.build_chat_response('{"score": 65, "issues": ['),
+            ],
+        ) as mock_post_json:
             with self.assertRaises(TranslationParseError) as context:
                 summarize_subtitle_content(
                     segments=[self.build_segment("seg-001")],
                     config=self.build_config(),
                 )
 
-        self.assertIn("invalid Agent JSON", str(context.exception))
+        self.assertEqual(mock_post_json.call_count, 2)
+        self.assertEqual(str(context.exception), FRIENDLY_AGENT_JSON_ERROR)
+        self.assertNotIn("content_preview", str(context.exception))
+        self.assertNotIn("invalid Agent JSON", str(context.exception))
+
+    def test_invalid_agent_json_retry_happens_only_once(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            return_value=self.build_chat_response("not json"),
+        ) as mock_post_json:
+            with self.assertRaises(TranslationParseError):
+                analyze_subtitle_quality(
+                    segments=[self.build_segment("seg-001")],
+                    config=self.build_config(),
+                )
+
+        self.assertEqual(mock_post_json.call_count, 2)
+
+    def test_provider_api_error_does_not_use_json_retry(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            side_effect=ProviderApiError("Agent request failed with HTTP 401."),
+        ) as mock_post_json:
+            with self.assertRaises(ProviderApiError):
+                analyze_subtitle_quality(
+                    segments=[self.build_segment("seg-001")],
+                    config=self.build_config(),
+                )
+
+        self.assertEqual(mock_post_json.call_count, 1)
+
+    def test_chunk_parse_failure_retries_only_failed_chunk_and_continues(self) -> None:
+        segments = self.make_long_segments(3)
+        responses = [
+            self.build_quality_response(score=90, issues=[]),
+            self.build_chat_response('{"score": 40, "issues": ['),
+            self.build_quality_response(score=40, issues=[]),
+            self.build_quality_response(score=80, issues=[]),
+        ]
+
+        with patch("backend.app.agent_service.AGENT_MAX_CHUNK_INPUT_CHAR_COUNT", 600):
+            with patch.object(
+                AgentChatCompletionClient,
+                "_post_json",
+                side_effect=responses,
+            ) as mock_post_json:
+                result = analyze_subtitle_quality(
+                    segments=segments,
+                    config=self.build_config(),
+                )
+
+        self.assertEqual(mock_post_json.call_count, 4)
+        self.assertEqual(result["diagnostics"]["parseRetryAttemptedChunks"], [2])
+        self.assertEqual(result["diagnostics"]["parseRetrySucceededChunks"], [2])
+        self.assertEqual(result["diagnostics"]["chunkScores"], [90, 40, 80])
 
     def test_agent_does_not_modify_input_segments(self) -> None:
         segments = self.make_long_segments(3)

@@ -25,13 +25,24 @@ AGENT_MAX_INPUT_CHAR_COUNT = AGENT_MAX_CHUNK_INPUT_CHAR_COUNT
 AGENT_MAX_CHUNK_COUNT = 10
 AGENT_MAX_SEGMENT_TEXT_CHAR_COUNT = 8000
 MAX_AGENT_ISSUES = 100
+AGENT_QUALITY_MAX_TOKENS = 2600
+AGENT_SUMMARY_MAX_TOKENS = 3600
+FRIENDLY_AGENT_JSON_ERROR = (
+    "The AI returned an incomplete result. Please try again, reduce subtitle length, or switch models."
+)
 
 SUBTITLE_QUALITY_SYSTEM_PROMPT = """
 You are LinguaSub's subtitle quality diagnosis Agent.
-Return strict JSON only. Do not include markdown, comments, explanations, or code fences.
+Return one complete valid JSON object only. Do not include markdown, comments, explanations, or code fences.
 Analyze only the subtitle segments provided by the user.
 Do not rewrite subtitles and do not return modified subtitle text.
 Every issue.segmentId must be one of the provided segment ids.
+For each chunk, return at most 12 issues. If there are many problems, prioritize error and warning severity items.
+Keep summary to 1-2 short sentences.
+Keep every message and suggestion brief.
+Do not copy long subtitle text into message, suggestion, summary, or diagnostics.
+Do not output long explanations outside the schema.
+Close every JSON object, array, and string.
 
 Check for these issue types:
 - empty_translation
@@ -63,9 +74,13 @@ score must represent the overall quality from 0 to 100.
 
 CONTENT_SUMMARY_SYSTEM_PROMPT = """
 You are LinguaSub's video content summary and study notes Agent.
-Return strict JSON only. Do not include markdown, comments, explanations, or code fences.
+Return one complete valid JSON object only. Do not include markdown, comments, explanations, or code fences.
 Use only the provided subtitle segments. Do not invent content that is not supported by them.
 Segment start/end values are milliseconds and must remain milliseconds.
+For each chunk, return at most 6 chapters and at most 12 keywords.
+Keep studyNotes concise and structured; do not write a long article.
+Do not copy long subtitle text into any field.
+All fields must be closed as valid JSON strings, arrays, and objects.
 
 Return this JSON shape:
 {
@@ -118,6 +133,30 @@ class AgentInputError(AgentServiceError):
     """Raised when the Agent request cannot be processed as user input."""
 
 
+class AgentJsonParseError(TranslationParseError):
+    """Raised when an Agent provider response is not valid JSON."""
+
+    def __init__(
+        self,
+        *,
+        provider_name: ProviderName,
+        content: str,
+        stage: str,
+        cause: BaseException,
+    ) -> None:
+        self.providerName = provider_name
+        self.stage = stage
+        self.contentPreview = _build_content_preview(content)
+        self.likelyTruncated = _looks_like_incomplete_json(content)
+        self.debugMessage = (
+            f"{provider_name} returned invalid Agent JSON at {stage}. "
+            f"likely_truncated={self.likelyTruncated} "
+            f"content_preview={self.contentPreview!r}"
+        )
+        super().__init__(FRIENDLY_AGENT_JSON_ERROR)
+        self.__cause__ = cause
+
+
 class AgentChatCompletionClient:
     """Small Agent wrapper around the existing translation chat transport."""
 
@@ -135,8 +174,68 @@ class AgentChatCompletionClient:
         user_prompt: dict[str, Any],
         timeout_seconds: int,
         context_label: str,
+        max_tokens: int,
     ) -> dict[str, Any]:
-        payload = {
+        payload = self._build_payload(
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+        )
+        content = self._request_message_content(
+            payload=payload,
+            api_key=api_key,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            context_label=context_label,
+        )
+        try:
+            return self._parse_json_object(
+                content,
+                provider_name=provider_name,
+                stage="initial",
+            )
+        except AgentJsonParseError as first_error:
+            retry_payload = self._build_payload(
+                model=model,
+                system_prompt=system_prompt,
+                user_prompt=self._build_json_retry_prompt(user_prompt),
+                max_tokens=max_tokens,
+            )
+            retry_content = self._request_message_content(
+                payload=retry_payload,
+                api_key=api_key,
+                base_url=base_url,
+                timeout_seconds=timeout_seconds,
+                context_label=context_label,
+            )
+            try:
+                parsed = self._parse_json_object(
+                    retry_content,
+                    provider_name=provider_name,
+                    stage="retry",
+                )
+            except AgentJsonParseError as retry_error:
+                retry_error.firstParseDebugMessage = first_error.debugMessage
+                raise retry_error from first_error
+
+            _attach_agent_parse_diagnostics(
+                parsed,
+                parse_retry_attempted=True,
+                parse_retry_succeeded=True,
+                first_error=first_error,
+            )
+            return parsed
+
+    def _build_payload(
+        self,
+        *,
+        model: str,
+        system_prompt: str,
+        user_prompt: dict[str, Any],
+        max_tokens: int,
+    ) -> dict[str, Any]:
+        return {
             "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -146,9 +245,20 @@ class AgentChatCompletionClient:
                 },
             ],
             "response_format": {"type": "json_object"},
+            "max_tokens": max_tokens,
             "temperature": 0,
             "stream": False,
         }
+
+    def _request_message_content(
+        self,
+        *,
+        payload: dict[str, Any],
+        api_key: str,
+        base_url: str,
+        timeout_seconds: int,
+        context_label: str,
+    ) -> str:
         response_data = self._post_json(
             url=self._build_endpoint(base_url),
             api_key=api_key,
@@ -156,8 +266,22 @@ class AgentChatCompletionClient:
             timeout_seconds=timeout_seconds,
             context_label=context_label,
         )
-        content = self._extract_message_content(response_data)
-        return self._parse_json_object(content, provider_name=provider_name)
+        return self._extract_message_content(response_data)
+
+    def _build_json_retry_prompt(self, user_prompt: dict[str, Any]) -> dict[str, Any]:
+        retry_prompt = dict(user_prompt)
+        retry_prompt["instruction"] = (
+            "Your previous response was not valid JSON. Return only one complete valid JSON object "
+            "matching the required schema. Do not include markdown. Close every object, array, and string. "
+            "Keep the output concise and do not copy long subtitle text."
+        )
+        retry_prompt["retryRules"] = [
+            "Return only valid JSON.",
+            "No markdown or code fences.",
+            "No text before or after the JSON object.",
+            "Use the same input segments and do not omit required top-level fields.",
+        ]
+        return retry_prompt
 
     def _build_endpoint(self, base_url: str) -> str:
         return self._transport._build_endpoint(base_url)
@@ -206,18 +330,26 @@ class AgentChatCompletionClient:
         content: str,
         *,
         provider_name: ProviderName,
+        stage: str,
     ) -> dict[str, Any]:
         prepared_content = _prepare_translation_json_content(content)
         try:
             parsed = json.loads(prepared_content.normalizedContent)
         except json.JSONDecodeError as exc:
-            raise TranslationParseError(
-                f"{provider_name} returned invalid Agent JSON. "
-                f"content_preview={_build_content_preview(content)!r}"
+            raise AgentJsonParseError(
+                provider_name=provider_name,
+                content=content,
+                stage=stage,
+                cause=exc,
             ) from exc
 
         if not isinstance(parsed, dict):
-            raise TranslationParseError("Agent response must be a JSON object.")
+            raise AgentJsonParseError(
+                provider_name=provider_name,
+                content=content,
+                stage=stage,
+                cause=TypeError("Agent response must be a JSON object."),
+            )
 
         return parsed
 
@@ -238,7 +370,8 @@ def analyze_subtitle_quality(
         user_prompt = {
             "instruction": (
                 "Diagnose subtitle quality for this chunk and return JSON only. "
-                "Do not modify subtitles or include rewritten subtitle text."
+                "Do not modify subtitles or include rewritten subtitle text. "
+                "Return at most 12 issues, prioritize error and warning items, and keep all text fields short."
             ),
             "sourceLanguage": _safe_optional_string(source_language),
             "targetLanguage": _safe_optional_string(target_language),
@@ -252,6 +385,7 @@ def analyze_subtitle_quality(
             system_prompt=SUBTITLE_QUALITY_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             timeout_seconds=timeout_seconds,
+            max_tokens=AGENT_QUALITY_MAX_TOKENS,
         )
         chunk_results.append(
             _normalize_subtitle_quality_result(
@@ -280,7 +414,8 @@ def summarize_subtitle_content(
         user_prompt = {
             "instruction": (
                 "Summarize this subtitle chunk and produce structured study notes. "
-                "Return JSON only."
+                "Return JSON only. Return at most 6 chapters and 12 keywords. "
+                "Keep studyNotes concise and do not copy long subtitle text."
             ),
             "sourceLanguage": _safe_optional_string(source_language),
             "targetLanguage": _safe_optional_string(target_language),
@@ -294,6 +429,7 @@ def summarize_subtitle_content(
             system_prompt=CONTENT_SUMMARY_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             timeout_seconds=timeout_seconds,
+            max_tokens=AGENT_SUMMARY_MAX_TOKENS,
         )
         chunk_results.append(_normalize_content_summary_result(response_object))
 
@@ -306,6 +442,7 @@ def _request_agent_json_object(
     system_prompt: str,
     user_prompt: dict[str, Any],
     timeout_seconds: int | str | None,
+    max_tokens: int,
 ) -> dict[str, Any]:
     provider_config = resolve_translation_provider_config(config)
     if not provider_config.baseUrl:
@@ -322,6 +459,7 @@ def _request_agent_json_object(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         timeout_seconds=_normalize_timeout_seconds(timeout_seconds),
+        max_tokens=max_tokens,
         context_label=_build_agent_request_context(
             provider=provider_config.provider,
             model=provider_config.model,
@@ -536,6 +674,7 @@ def _normalize_content_summary_result(
         "chapters": chapters,
         "keywords": keywords,
         "studyNotes": _safe_string(response_object.get("studyNotes")),
+        "diagnostics": _safe_object(response_object.get("diagnostics")),
     }
 
 
@@ -590,6 +729,7 @@ def _merge_subtitle_quality_results(
         "diagnostics": _build_chunk_diagnostics(
             plan,
             {
+                **_collect_parse_retry_diagnostics(chunk_results),
                 "issueLimit": MAX_AGENT_ISSUES,
                 "issueLimitApplied": issue_limit_applied,
                 "filteredIssueSegmentIds": filtered_segment_ids,
@@ -615,6 +755,7 @@ def _merge_content_summary_results(
         merged["diagnostics"] = _build_chunk_diagnostics(
             plan,
             {
+                **_collect_parse_retry_diagnostics(chunk_results),
                 "finalMergePerformed": False,
                 "keywordDeduplicated": False,
             },
@@ -668,6 +809,7 @@ def _merge_content_summary_results(
         "diagnostics": _build_chunk_diagnostics(
             plan,
             {
+                **_collect_parse_retry_diagnostics(chunk_results),
                 "finalMergePerformed": False,
                 "keywordDeduplicated": True,
             },
@@ -740,6 +882,32 @@ def _build_chunk_diagnostics(
     return diagnostics
 
 
+def _collect_parse_retry_diagnostics(
+    chunk_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    attempted_chunks: list[int] = []
+    succeeded_chunks: list[int] = []
+    likely_truncated_chunks: list[int] = []
+
+    for index, chunk_result in enumerate(chunk_results, start=1):
+        diagnostics = _safe_object(chunk_result.get("diagnostics"))
+        if diagnostics.get("parseRetryAttempted"):
+            attempted_chunks.append(index)
+        if diagnostics.get("parseRetrySucceeded"):
+            succeeded_chunks.append(index)
+        if diagnostics.get("parseRetryLikelyTruncated"):
+            likely_truncated_chunks.append(index)
+
+    return {
+        "parseRetryAttempted": bool(attempted_chunks),
+        "parseRetrySucceeded": bool(attempted_chunks)
+        and len(attempted_chunks) == len(succeeded_chunks),
+        "parseRetryAttemptedChunks": attempted_chunks,
+        "parseRetrySucceededChunks": succeeded_chunks,
+        "parseRetryLikelyTruncatedChunks": likely_truncated_chunks,
+    }
+
+
 def _normalize_score(value: Any) -> int:
     try:
         score = int(round(float(value)))
@@ -793,6 +961,75 @@ def _safe_object(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
     return {}
+
+
+def _attach_agent_parse_diagnostics(
+    parsed: dict[str, Any],
+    *,
+    parse_retry_attempted: bool,
+    parse_retry_succeeded: bool,
+    first_error: AgentJsonParseError,
+) -> None:
+    diagnostics = _safe_object(parsed.get("diagnostics"))
+    diagnostics.update(
+        {
+            "parseRetryAttempted": parse_retry_attempted,
+            "parseRetrySucceeded": parse_retry_succeeded,
+            "parseRetryLikelyTruncated": first_error.likelyTruncated,
+            "parseRetryStage": first_error.stage,
+        }
+    )
+    parsed["diagnostics"] = diagnostics
+
+
+def _looks_like_incomplete_json(content: str) -> bool:
+    stripped = content.strip()
+    if not stripped:
+        return False
+
+    if stripped.endswith(("...", "...(truncated)", "(truncated)")):
+        return True
+
+    if stripped.startswith("{") and not stripped.endswith("}"):
+        return True
+    if stripped.startswith("[") and not stripped.endswith("]"):
+        return True
+
+    return _has_unbalanced_json_delimiters(stripped)
+
+
+def _has_unbalanced_json_delimiters(content: str) -> bool:
+    stack: list[str] = []
+    in_string = False
+    escape_next = False
+    pairs = {"}": "{", "]": "["}
+
+    for char in content:
+        if escape_next:
+            escape_next = False
+            continue
+
+        if char == "\\":
+            escape_next = True
+            continue
+
+        if char == '"':
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if char in "{[":
+            stack.append(char)
+            continue
+
+        if char in pairs:
+            if not stack or stack[-1] != pairs[char]:
+                return True
+            stack.pop()
+
+    return in_string or bool(stack)
 
 
 def _build_content_preview(content: str, limit: int = 260) -> str:
