@@ -2153,7 +2153,16 @@ ol {
 .agent-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
+}
+
+.agent-export-hint {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .agent-result-grid {
@@ -2218,6 +2227,53 @@ ol {
   flex-direction: column;
   gap: 12px;
   margin-top: 16px;
+}
+
+.agent-summary-section--compact {
+  gap: 10px;
+}
+
+.agent-summary-status {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+}
+
+.agent-summary-status h4 {
+  margin-bottom: 4px;
+}
+
+.agent-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.agent-stat-item {
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.agent-stat-item span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agent-stat-item strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-size: 20px;
+  line-height: 1;
 }
 
 .agent-issue-list,

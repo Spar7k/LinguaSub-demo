@@ -43,20 +43,6 @@ function normalizeTimeValue(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0
 }
 
-function formatMilliseconds(value: number): string {
-  const totalMilliseconds = normalizeTimeValue(value)
-  const milliseconds = totalMilliseconds % 1000
-  const totalSeconds = Math.floor(totalMilliseconds / 1000)
-  const seconds = totalSeconds % 60
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  const minutes = totalMinutes % 60
-  const hours = Math.floor(totalMinutes / 60)
-
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(
-    seconds,
-  ).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`
-}
-
 function normalizeScore(score: number): number {
   if (!Number.isFinite(score)) {
     return 0
@@ -232,6 +218,7 @@ export function SubtitleAgentPanel({
               ? agentMessages.actions.generatingSummary
               : agentMessages.actions.generateSummary}
           </button>
+          <p className="agent-export-hint">{agentMessages.summaryExportHint}</p>
         </div>
 
         <div className="agent-result-grid">
@@ -309,57 +296,28 @@ export function SubtitleAgentPanel({
             ) : null}
 
             {contentSummaryResult ? (
-              <div className="agent-summary-section">
+              <div className="agent-summary-section agent-summary-section--compact">
                 {isContentSummaryStale ? (
                   <div className="warning-banner">
-                    <p>{agentMessages.staleNotice}</p>
+                    <p>{agentMessages.summaryStaleNotice}</p>
                   </div>
                 ) : null}
-                <h4>{agentMessages.oneSentenceTitle}</h4>
-                <p className="agent-note">
-                  {contentSummaryResult.oneSentenceSummary}
-                </p>
-
-                <h4>{agentMessages.chaptersTitle}</h4>
-                {contentSummaryResult.chapters.length > 0 ? (
-                  <div className="agent-chapter-list">
-                    {contentSummaryResult.chapters.map((chapter, index) => (
-                      <article
-                        className="agent-chapter"
-                        key={`${chapter.start}-${chapter.end}-${index}`}
-                      >
-                        <span className="agent-time-range">
-                          {formatMilliseconds(chapter.start)} -{' '}
-                          {formatMilliseconds(chapter.end)}
-                        </span>
-                        <strong>{chapter.title}</strong>
-                        <p>{chapter.summary}</p>
-                      </article>
-                    ))}
+                <div className="agent-summary-status">
+                  <div>
+                    <h4>{agentMessages.summaryGeneratedTitle}</h4>
+                    <p className="agent-note">{agentMessages.summaryExportHint}</p>
                   </div>
-                ) : (
-                  <p className="agent-note">{agentMessages.noChapters}</p>
-                )}
-
-                <h4>{agentMessages.keywordsTitle}</h4>
-                {contentSummaryResult.keywords.length > 0 ? (
-                  <div className="agent-keyword-list">
-                    {contentSummaryResult.keywords.map((keyword, index) => (
-                      <div className="agent-keyword" key={`${keyword.term}-${index}`}>
-                        <strong>{keyword.term}</strong>
-                        {keyword.translation ? <span>{keyword.translation}</span> : null}
-                        {keyword.explanation ? <p>{keyword.explanation}</p> : null}
-                      </div>
-                    ))}
+                  <div className="agent-stat-grid">
+                    <div className="agent-stat-item">
+                      <span>{agentMessages.chaptersCountLabel}</span>
+                      <strong>{contentSummaryResult.chapters.length}</strong>
+                    </div>
+                    <div className="agent-stat-item">
+                      <span>{agentMessages.keywordsCountLabel}</span>
+                      <strong>{contentSummaryResult.keywords.length}</strong>
+                    </div>
                   </div>
-                ) : (
-                  <p className="agent-note">{agentMessages.noKeywords}</p>
-                )}
-
-                <h4>{agentMessages.studyNotesTitle}</h4>
-                <p className="agent-note agent-note--prewrap">
-                  {contentSummaryResult.studyNotes}
-                </p>
+                </div>
               </div>
             ) : null}
           </section>

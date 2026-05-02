@@ -1138,6 +1138,10 @@ const enMessages = {
       summaryError: 'Content summary generation failed. Please try again.',
       staleNotice:
         'Subtitles have changed. Consider regenerating the Agent result.',
+      summaryStaleNotice:
+        'Subtitles have changed. Regenerate the content summary before exporting.',
+      summaryExportHint:
+        'The generated content summary can be exported as a Word document on the Export page.',
       actions: {
         analyzeQuality: 'Analyze Subtitle Quality',
         analyzingQuality: 'Analyzing...',
@@ -1151,6 +1155,9 @@ const enMessages = {
       noIssues: 'No obvious issues found.',
       summaryTitle: 'Content summary',
       summaryDescription: 'Create a learning-oriented summary from the subtitle text.',
+      summaryGeneratedTitle: 'Content summary generated',
+      chaptersCountLabel: 'Chapters',
+      keywordsCountLabel: 'Keywords',
       oneSentenceTitle: 'One-sentence summary',
       chaptersTitle: 'Chapters',
       keywordsTitle: 'Keywords',
@@ -1516,6 +1523,8 @@ const zhMessagesNormalized = {
       qualityError: '字幕质量诊断失败，请重试。',
       summaryError: '内容总结生成失败，请重试。',
       staleNotice: '字幕内容已变化，建议重新生成 Agent 结果。',
+      summaryStaleNotice: '字幕内容已变化，建议重新生成内容总结后再导出。',
+      summaryExportHint: '内容总结可在导出页导出为 Word。',
       actions: {
         analyzeQuality: 'AI 诊断字幕质量',
         analyzingQuality: '诊断中...',
@@ -1529,6 +1538,9 @@ const zhMessagesNormalized = {
       noIssues: '未发现明显问题。',
       summaryTitle: '内容总结',
       summaryDescription: '从当前字幕生成面向学习和复盘的结构化总结。',
+      summaryGeneratedTitle: '内容总结已生成',
+      chaptersCountLabel: '章节',
+      keywordsCountLabel: '关键词',
       oneSentenceTitle: '一句话总结',
       chaptersTitle: '分段章节',
       keywordsTitle: '关键词 / 专有名词',
