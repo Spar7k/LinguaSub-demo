@@ -8,6 +8,7 @@ from zipfile import ZipFile
 
 from backend.app.export_service import (
     EmptySubtitleExportError,
+    ExportServiceError,
     MissingTranslationExportError,
     export_srt,
     export_subtitles,
@@ -29,6 +30,8 @@ class ExportServiceTests(unittest.TestCase):
             "subtitle-file.single.srt",
             "custom-export.srt",
             "long-range.srt",
+            "subtitle-file.recognition.txt",
+            "custom-recognition.txt",
             "subtitle-file_bilingual.docx",
             "subtitle-file_transcript.docx",
             "custom-review.docx",
@@ -197,6 +200,107 @@ class ExportServiceTests(unittest.TestCase):
         content = Path(result.path).read_text(encoding="utf-8-sig")
         self.assertIn("00:02:01,000 --> 00:02:05,500", content)
         self.assertIn("[CN] Long tail segment.", content)
+
+    def test_export_recognition_text_writes_txt_with_source_only(self) -> None:
+        result = export_subtitles(
+            [
+                SubtitleSegment(
+                    id="seg-201",
+                    start=1200,
+                    end=4500,
+                    sourceText="Hello everyone, welcome to this video.",
+                    translatedText="This translated text must not be exported.",
+                    sourceLanguage="en",
+                    targetLanguage="zh-CN",
+                ),
+                SubtitleSegment(
+                    id="seg-202",
+                    start=4600,
+                    end=8300,
+                    sourceText="",
+                    translatedText="This empty source segment must stay untranslated.",
+                    sourceLanguage="en",
+                    targetLanguage="zh-CN",
+                ),
+            ],
+            export_format="recognition_text",
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+        )
+
+        output_path = Path(result.path)
+        self.assertTrue(output_path.exists())
+        self.assertEqual(result.fileName, "subtitle-file.recognition.txt")
+        self.assertEqual(result.format, "recognition_text")
+        self.assertIsNone(result.wordMode)
+
+        content = output_path.read_text(encoding="utf-8-sig")
+        self.assertIn("[00:00:01.200 - 00:00:04.500]", content)
+        self.assertIn("[00:00:04.600 - 00:00:08.300]", content)
+        self.assertIn("Hello everyone, welcome to this video.", content)
+        self.assertNotIn("This translated text must not be exported.", content)
+        self.assertNotIn("This empty source segment must stay untranslated.", content)
+
+    def test_export_recognition_text_normalizes_custom_extension_to_txt(self) -> None:
+        result = export_subtitles(
+            [
+                SubtitleSegment(
+                    id="seg-203",
+                    start=0,
+                    end=1000,
+                    sourceText="Keep the recognized source.",
+                    translatedText="Do not write the translation.",
+                    sourceLanguage="en",
+                    targetLanguage="zh-CN",
+                )
+            ],
+            export_format="recognition_text",
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            file_name="custom-recognition.srt",
+        )
+
+        output_path = Path(result.path)
+        self.assertTrue(output_path.exists())
+        self.assertEqual(result.fileName, "custom-recognition.txt")
+        self.assertEqual(output_path.suffix, ".txt")
+        self.assertIn(
+            "Keep the recognized source.",
+            output_path.read_text(encoding="utf-8-sig"),
+        )
+
+    def test_export_recognition_text_raises_when_segments_are_empty(self) -> None:
+        with self.assertRaises(EmptySubtitleExportError):
+            export_subtitles(
+                [],
+                export_format="recognition_text",
+                source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            )
+
+    def test_export_recognition_text_raises_when_all_source_text_is_empty(self) -> None:
+        with self.assertRaisesRegex(ExportServiceError, "No recognition text available"):
+            export_subtitles(
+                [
+                    SubtitleSegment(
+                        id="seg-204",
+                        start=0,
+                        end=1000,
+                        sourceText=" ",
+                        translatedText="Translation should not matter.",
+                        sourceLanguage="en",
+                        targetLanguage="zh-CN",
+                    ),
+                    SubtitleSegment(
+                        id="seg-205",
+                        start=1000,
+                        end=2000,
+                        sourceText="\n",
+                        translatedText="Another ignored translation.",
+                        sourceLanguage="en",
+                        targetLanguage="zh-CN",
+                    ),
+                ],
+                export_format="recognition_text",
+                source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            )
 
     def test_export_word_writes_docx_with_bilingual_table_auto_name(self) -> None:
         result = export_word(

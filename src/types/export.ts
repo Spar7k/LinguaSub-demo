@@ -1,4 +1,4 @@
-export type ExportFormat = 'srt' | 'word'
+export type ExportFormat = 'srt' | 'word' | 'recognition_text'
 
 export type WordExportMode = 'bilingualTable' | 'transcript'
 

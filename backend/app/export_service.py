@@ -1,4 +1,4 @@
-"""Subtitle export service for writing SRT and Word files to disk."""
+"""Subtitle export service for writing SRT, Word, and TXT files to disk."""
 
 from __future__ import annotations
 
@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Literal
 
 from .models import JsonModel, SubtitleSegment
+from .recognition_text_export_service import (
+    RecognitionTextExportError,
+    generate_recognition_text,
+)
 from .srt_service import generate_srt
 from .word_export_service import (
     WORD_EXPORT_MODE_BILINGUAL_TABLE,
@@ -17,7 +21,7 @@ from .word_export_service import (
     validate_word_export_mode,
 )
 
-ExportFormat = Literal["srt", "word"]
+ExportFormat = Literal["srt", "word", "recognition_text"]
 WordExportMode = Literal["bilingualTable", "transcript"]
 
 DEFAULT_EXPORT_STEM = "linguasub-subtitles"
@@ -25,10 +29,11 @@ DEFAULT_EXPORT_ENCODING = "utf-8-sig"
 INVALID_FILE_NAME_PATTERN = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 REPEATED_UNDERSCORE_PATTERN = re.compile(r"_+")
 TRAILING_DOTS_AND_SPACES_RE = re.compile(r"[. ]+$")
-SUPPORTED_EXPORT_FORMATS = {"srt", "word"}
+SUPPORTED_EXPORT_FORMATS = {"srt", "word", "recognition_text"}
 EXPORT_EXTENSION_MAP: dict[ExportFormat, str] = {
     "srt": ".srt",
     "word": ".docx",
+    "recognition_text": ".txt",
 }
 
 
@@ -148,6 +153,9 @@ def _build_default_file_name(
             return f"{stem}_transcript.docx"
         return f"{stem}.docx"
 
+    if export_format == "recognition_text":
+        return f"{stem}.recognition.txt"
+
     suffix = "bilingual" if bilingual else "single"
     return f"{stem}.{suffix}.srt"
 
@@ -231,6 +239,13 @@ def _validate_segments(
 ) -> None:
     if not segments:
         raise EmptySubtitleExportError("There are no subtitle segments to export.")
+
+    if export_format == "recognition_text" and not any(
+        segment.sourceText.strip() for segment in segments
+    ):
+        raise ExportServiceError(
+            "No recognition text available. Please transcribe a video first."
+        )
 
     if export_format == "srt" and bilingual:
         missing_translation_ids = [
@@ -316,11 +331,16 @@ def export_subtitles(
         if normalized_format == "word":
             content = generate_word_document(segments, mode=normalized_word_mode)
             export_path.write_bytes(content)
+        elif normalized_format == "recognition_text":
+            content = generate_recognition_text(segments)
+            export_path.write_text(content, encoding=DEFAULT_EXPORT_ENCODING)
         else:
             content = generate_srt(segments, bilingual=bilingual)
             export_path.write_text(content, encoding=DEFAULT_EXPORT_ENCODING)
     except WordExportError as exc:
         raise ExportWriteError(str(exc)) from exc
+    except RecognitionTextExportError as exc:
+        raise ExportServiceError(str(exc)) from exc
     except OSError as exc:
         raw_error = exc.strerror or str(exc)
         lowered = raw_error.lower()
@@ -383,6 +403,22 @@ def export_word(
     )
 
 
+def export_recognition_text(
+    segments: list[SubtitleSegment],
+    *,
+    source_file_path: str | Path | None = None,
+    file_name: str | None = None,
+) -> ExportResult:
+    return export_subtitles(
+        segments=segments,
+        export_format="recognition_text",
+        bilingual=False,
+        word_mode=WORD_EXPORT_MODE_BILINGUAL_TABLE,
+        source_file_path=source_file_path,
+        file_name=file_name,
+    )
+
+
 def exportSrt(
     segments: list[SubtitleSegment],
     *,
@@ -408,6 +444,19 @@ def exportWord(
     return export_word(
         segments=segments,
         word_mode=word_mode,
+        source_file_path=source_file_path,
+        file_name=file_name,
+    )
+
+
+def exportRecognitionText(
+    segments: list[SubtitleSegment],
+    *,
+    source_file_path: str | Path | None = None,
+    file_name: str | None = None,
+) -> ExportResult:
+    return export_recognition_text(
+        segments=segments,
         source_file_path=source_file_path,
         file_name=file_name,
     )

@@ -11,7 +11,7 @@ import type {
 import { safeTrim } from '../utils/config'
 import { SectionCard } from './SectionCard'
 
-type ExportTarget = 'subtitle' | 'word' | 'video'
+type ExportTarget = 'subtitle' | 'recognitionText' | 'word' | 'video'
 
 type ExportWorkspaceProps = {
   importResult: ImportResult | null
@@ -60,6 +60,10 @@ function getDefaultFileName(
     return `${stem}.docx`
   }
 
+  if (exportFormat === 'recognition_text') {
+    return `${stem}.recognition.txt`
+  }
+
   const suffix = outputMode === 'bilingual' ? 'bilingual' : 'single'
   return `${stem}.${suffix}.srt`
 }
@@ -81,12 +85,30 @@ function getDirectoryLabel(sourceFilePath: string | null): string {
 }
 
 function getInitialExportTarget(exportFormat: ExportFormat): ExportTarget {
-  return exportFormat === 'word' ? 'word' : 'subtitle'
+  if (exportFormat === 'word') {
+    return 'word'
+  }
+
+  if (exportFormat === 'recognition_text') {
+    return 'recognitionText'
+  }
+
+  return 'subtitle'
 }
 
 function getExportTargetFormat(target: ExportTarget): ExportFormat {
-  return target === 'word' ? 'word' : 'srt'
+  if (target === 'word') {
+    return 'word'
+  }
+
+  if (target === 'recognitionText') {
+    return 'recognition_text'
+  }
+
+  return 'srt'
 }
+
+const exportTargets: ExportTarget[] = ['subtitle', 'recognitionText', 'word', 'video']
 
 export function ExportWorkspace({
   importResult,
@@ -158,7 +180,12 @@ export function ExportWorkspace({
         ? projectState.currentFile.name
         : null
   const isBusy = isExporting || isVideoBurnExporting
+  const hasRecognitionText = projectState.segments.some((segment) =>
+    safeTrim(segment.sourceText),
+  )
   const canExportFile = projectState.segments.length > 0 && !isBusy
+  const canExportRecognitionText =
+    projectState.segments.length > 0 && hasRecognitionText && !isBusy
   const canExportBurnedVideo =
     Boolean(currentVideoPath) && projectState.segments.length > 0 && !isBusy
   const activeFormat = getExportTargetFormat(exportTarget)
@@ -172,13 +199,12 @@ export function ExportWorkspace({
         .map((step) => m.common.workflowSteps[step as keyof typeof m.common.workflowSteps] ?? step)
         .join(' -> ')
     : ''
-  const formatValue =
-    exportTarget === 'word'
-      ? m.exportPage.fileFormatValues.word
-      : m.exportPage.fileFormatValues.srt
+  const formatValue = m.exportPage.fileFormatValues[activeFormat]
   const formatDescription =
     exportTarget === 'word'
       ? m.exportPage.fileFormatDescriptions.word
+      : exportTarget === 'recognitionText'
+        ? m.exportPage.fileFormatDescriptions.recognition_text
       : m.exportPage.fileFormatDescriptions.srt
   const wordModeDescription =
     wordExportMode === 'transcript'
@@ -187,12 +213,18 @@ export function ExportWorkspace({
   const activeFileResult =
     exportResult &&
     ((exportTarget === 'subtitle' && exportResult.format === 'srt') ||
+      (exportTarget === 'recognitionText' &&
+        exportResult.format === 'recognition_text') ||
       (exportTarget === 'word' && exportResult.format === 'word'))
       ? exportResult
       : null
   const activeVideoResult = exportTarget === 'video' ? videoBurnExportResult : null
   const primaryDisabled =
-    exportTarget === 'video' ? !canExportBurnedVideo : !canExportFile
+    exportTarget === 'video'
+      ? !canExportBurnedVideo
+      : exportTarget === 'recognitionText'
+        ? !canExportRecognitionText
+        : !canExportFile
   const primaryLabel =
     exportTarget === 'video'
       ? isVideoBurnExporting
@@ -202,6 +234,8 @@ export function ExportWorkspace({
         ? copy.buttons.exporting
         : exportTarget === 'word'
           ? copy.buttons.exportWord
+          : exportTarget === 'recognitionText'
+            ? copy.buttons.exportRecognitionText
           : copy.buttons.exportSubtitle
 
   function selectExportTarget(nextTarget: ExportTarget) {
@@ -209,6 +243,9 @@ export function ExportWorkspace({
     onClearExportError()
     if (nextTarget === 'subtitle') {
       onExportFormatChange('srt')
+    }
+    if (nextTarget === 'recognitionText') {
+      onExportFormatChange('recognition_text')
     }
     if (nextTarget === 'word') {
       onExportFormatChange('word')
@@ -235,7 +272,7 @@ export function ExportWorkspace({
       <div className="export-target-group">
         <span className="field-label">{copy.targetLabel}</span>
         <div className="export-target-grid" role="tablist" aria-label={copy.targetLabel}>
-          {(['subtitle', 'word', 'video'] as const).map((target) => (
+          {exportTargets.map((target) => (
             <button
               key={target}
               type="button"
@@ -268,7 +305,7 @@ export function ExportWorkspace({
                 <option value="single">{m.common.outputModes.single}</option>
               </select>
             </label>
-          ) : (
+          ) : exportTarget === 'word' ? (
             <label className="field-block">
               <span className="field-label">{m.exportPage.wordModeLabel}</span>
               <select
@@ -285,9 +322,13 @@ export function ExportWorkspace({
                 <option value="transcript">{m.common.wordExportModes.transcript}</option>
               </select>
             </label>
-          )}
+          ) : null}
 
-          <label className="field-block export-file-name-field">
+          <label
+            className={`field-block export-file-name-field ${
+              exportTarget === 'recognitionText' ? 'export-file-name-field--wide' : ''
+            }`.trim()}
+          >
             <span className="field-label">{copy.fileNameLabel}</span>
             <input
               className="text-input"
@@ -343,11 +384,7 @@ export function ExportWorkspace({
       <div className="export-primary-row">
         <div>
           <strong>
-            {exportTarget === 'video'
-              ? copy.targets.video.title
-              : exportTarget === 'word'
-                ? copy.targets.word.title
-                : copy.targets.subtitle.title}
+            {copy.targets[exportTarget].title}
           </strong>
           <p>
             {exportTarget === 'video'
@@ -392,8 +429,21 @@ export function ExportWorkspace({
         <div className="error-banner" role="alert">
           <strong>{m.common.misc.noSubtitleContent}</strong>
           <p>
-            {exportTarget === 'video' ? copy.noSegments : m.exportPage.noSubtitleDescription}
+            {exportTarget === 'recognitionText'
+              ? m.app.errors.noRecognitionTextToExport
+              : exportTarget === 'video'
+                ? copy.noSegments
+                : m.exportPage.noSubtitleDescription}
           </p>
+        </div>
+      ) : null}
+
+      {exportTarget === 'recognitionText' &&
+      projectState.segments.length > 0 &&
+      !hasRecognitionText ? (
+        <div className="error-banner" role="alert">
+          <strong>{copy.targets.recognitionText.title}</strong>
+          <p>{m.app.errors.noRecognitionTextToExport}</p>
         </div>
       ) : null}
 

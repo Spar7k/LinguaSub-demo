@@ -283,6 +283,7 @@ const zhMessages = {
       missingRecognitionPath: '导入的媒体文件缺少识别路径。',
       missingUpdatedSegment: '翻译服务没有返回更新后的字幕片段。',
       noSubtitleSegmentsToExport: '当前没有可导出的字幕片段。',
+      noRecognitionTextToExport: '暂无识别内容可导出，请先完成视频识别。',
       exportFailed: '导出失败，请重试。',
       startupCheckFailed: '无法加载启动环境检查。',
       configLoadFailed: '无法加载翻译配置。',
@@ -618,6 +619,7 @@ const enMessages = {
     exportFormats: {
       srt: 'SRT',
       word: 'Word',
+      recognition_text: 'Recognition Text TXT',
     },
     transcriptionProviders: {
       openaiSpeech: 'Cloud transcription (Recommended)',
@@ -870,6 +872,8 @@ const enMessages = {
       missingUpdatedSegment:
         'The translation service did not return an updated subtitle segment.',
       noSubtitleSegmentsToExport: 'There are no subtitle segments to export.',
+      noRecognitionTextToExport:
+        'No recognition text available. Please transcribe a video first.',
       exportFailed: 'Export failed. Please try again.',
       startupCheckFailed: 'Could not load the startup environment check.',
       configLoadFailed: 'Could not load the translation config.',
@@ -1144,6 +1148,11 @@ const enMessages = {
           title: 'Subtitle file',
           description: 'Generate an SRT subtitle file from the current segments.',
         },
+        recognitionText: {
+          title: 'Recognition Text TXT',
+          description:
+            'Export the original transcribed text for manual ASR accuracy review.',
+        },
         word: {
           title: 'Word document',
           description: 'Generate a DOCX file for review, reading, or archiving.',
@@ -1177,6 +1186,7 @@ const enMessages = {
         'Video export uses the current full ProjectState.segments and lets the backend choose an adaptive ASS style.',
       buttons: {
         exportSubtitle: 'Export subtitle file',
+        exportRecognitionText: 'Export Recognition Text TXT',
         exportWord: 'Export Word document',
         exportVideo: 'Export subtitled video',
         exporting: 'Exporting...',
@@ -1190,12 +1200,15 @@ const enMessages = {
     fileFormatValues: {
       srt: 'SRT (.srt)',
       word: 'Word (.docx)',
+      recognition_text: 'Recognition Text TXT (.txt)',
     },
     fileFormatDescriptions: {
       srt:
         'SRT export keeps the subtitle timing structure and writes either bilingual or single-language subtitle blocks.',
       word:
         'Word export writes a real .docx document. Choose either a bilingual review table or a readable transcript layout.',
+      recognition_text:
+        'TXT export writes only the original recognition text with timestamps for ASR review.',
     },
     bilingualDescription: 'Source text and translated text will be written on separate lines.',
     singleDescription: 'Translated text is used first. If it is empty, LinguaSub falls back to the source text.',
@@ -1357,6 +1370,7 @@ const zhMessagesNormalized = {
     exportFormats: {
       srt: 'SRT',
       word: 'Word',
+      recognition_text: '识别原文 TXT',
     },
     wordExportModes: {
       bilingualTable: '双语表格',
@@ -1461,6 +1475,10 @@ const zhMessagesNormalized = {
           title: '字幕文件',
           description: '把当前字幕片段导出为 SRT 文件。',
         },
+        recognitionText: {
+          title: '识别原文 TXT',
+          description: '导出语音识别得到的原始文本，便于人工检查识别准确性。',
+        },
         word: {
           title: 'Word 文档',
           description: '生成适合审阅、阅读或归档的 DOCX 文件。',
@@ -1493,6 +1511,7 @@ const zhMessagesNormalized = {
         '带字幕视频会使用当前完整 ProjectState.segments，并由后端自动选择适合竖屏 / 横屏的字幕样式。',
       buttons: {
         exportSubtitle: '导出字幕文件',
+        exportRecognitionText: '导出识别原文 TXT',
         exportWord: '导出 Word 文档',
         exportVideo: '导出带字幕视频',
         exporting: '正在导出...',
@@ -1504,12 +1523,15 @@ const zhMessagesNormalized = {
     fileFormatValues: {
       srt: 'SRT (.srt)',
       word: 'Word (.docx)',
+      recognition_text: '识别原文 TXT (.txt)',
     },
     fileFormatDescriptions: {
       srt:
         'SRT 导出会保留字幕时间轴结构，并按当前单双语模式写出字幕内容。',
       word:
         'Word 导出会生成真正的 .docx 文件，可在双语表格和可读文稿两种布局之间切换。',
+      recognition_text:
+        'TXT 导出只写入带时间戳的识别原文，用于人工检查语音识别准确性。',
     },
     wordModeDescriptions: {
       bilingualTable:

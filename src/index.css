@@ -1118,7 +1118,7 @@ ol {
 
 .export-target-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1190,6 +1190,10 @@ ol {
 
 .export-file-name-field {
   min-width: 0;
+}
+
+.export-file-name-field--wide {
+  grid-column: 1 / -1;
 }
 
 .export-video-style,

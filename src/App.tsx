@@ -506,6 +506,62 @@ function getWordExportModeLabel(
   return m.common.wordExportModes[wordExportMode]
 }
 
+function getExportFormatLabel(exportFormat: ExportFormat, m: LanguagePack): string {
+  return m.common.exportFormats[exportFormat]
+}
+
+function getExportFileFormatValue(exportFormat: ExportFormat, m: LanguagePack): string {
+  return m.exportPage.fileFormatValues[exportFormat]
+}
+
+function getExportStatusPoint(
+  exportFormat: ExportFormat,
+  outputMode: OutputMode,
+  wordExportMode: WordExportMode,
+  m: LanguagePack,
+): string {
+  if (exportFormat === 'word') {
+    return `${m.exportPage.wordModeLabel}: ${getWordExportModeLabel(wordExportMode, m)}`
+  }
+
+  if (exportFormat === 'recognition_text') {
+    return `${m.common.summary.exportFormat}: ${getExportFormatLabel(exportFormat, m)}`
+  }
+
+  return `${m.common.summary.outputMode}: ${getOutputModeLabel(outputMode, m)}`
+}
+
+function getTaskOutputFormat(
+  exportFormat: ExportFormat,
+  outputMode: OutputMode,
+  wordExportMode: WordExportMode,
+): string {
+  if (exportFormat === 'word') {
+    return `word:${wordExportMode}`
+  }
+
+  if (exportFormat === 'recognition_text') {
+    return 'recognition_text'
+  }
+
+  return outputMode === 'bilingual' ? 'srt:bilingual' : 'srt:single'
+}
+
+function getPrimaryExportActionLabel(
+  exportFormat: ExportFormat,
+  m: LanguagePack,
+): string {
+  if (exportFormat === 'word') {
+    return m.common.buttons.exportWord
+  }
+
+  if (exportFormat === 'recognition_text') {
+    return getExportFormatLabel(exportFormat, m)
+  }
+
+  return m.common.buttons.exportSrt
+}
+
 function getStatusLabel(status: ProjectState['status'], m: LanguagePack): string {
   return m.common.statuses[status]
 }
@@ -717,7 +773,7 @@ function buildHeaderMetrics(
     return [
       {
         label: language === 'zh' ? '导出' : 'Export',
-        value: 'SRT / Word / MP4',
+        value: 'SRT / TXT / Word / MP4',
         hint:
           language === 'zh'
             ? '导出页内选择具体类型后再生成文件。'
@@ -963,9 +1019,7 @@ function buildSidebarStatus(
       points: [
         m.app.notes.previewReady,
         m.common.summary.livePreviewEdits,
-        exportFormat === 'word'
-          ? `${m.exportPage.wordModeLabel}: ${getWordExportModeLabel(wordExportMode, m)}`
-          : `${m.common.summary.outputMode}: ${getOutputModeLabel(outputMode, m)}`,
+        getExportStatusPoint(exportFormat, outputMode, wordExportMode, m),
       ],
     }
   }
@@ -975,11 +1029,7 @@ function buildSidebarStatus(
       label: m.common.statuses.done,
       hint: m.exportPage.lastExportDescription(exportResult.fileName),
       points: [
-        `${m.common.summary.exportFormat}: ${
-          exportResult.format === 'word'
-            ? m.exportPage.fileFormatValues.word
-            : m.exportPage.fileFormatValues.srt
-        }`,
+        `${m.common.summary.exportFormat}: ${getExportFileFormatValue(exportResult.format, m)}`,
         `${m.common.summary.subtitleRows}: ${exportResult.count}`,
         `${m.common.summary.path}: ${exportResult.path}`,
       ],
@@ -996,9 +1046,7 @@ function buildSidebarStatus(
       points: [
         `${m.common.summary.currentFile}: ${importResult?.currentFile.name ?? m.common.misc.notSelected}`,
         `${m.common.misc.preparedSegments}: ${projectState.segments.length}`,
-        exportFormat === 'word'
-          ? `${m.exportPage.wordModeLabel}: ${getWordExportModeLabel(wordExportMode, m)}`
-          : `${m.common.summary.outputMode}: ${getOutputModeLabel(outputMode, m)}`,
+        getExportStatusPoint(exportFormat, outputMode, wordExportMode, m),
       ],
     }
   }
@@ -2555,8 +2603,26 @@ function App() {
   }
 
   async function handleExport(formatOverride?: ExportFormat) {
+    const requestedExportFormat = formatOverride ?? selectedExportFormat
+
     if (projectState.segments.length === 0) {
       const message = m.app.errors.noSubtitleSegmentsToExport
+      setProcessError(message)
+      startTransition(() => {
+        setProjectState((current) => ({
+          ...current,
+          status: 'error',
+          error: message,
+        }))
+      })
+      return
+    }
+
+    if (
+      requestedExportFormat === 'recognition_text' &&
+      !projectState.segments.some((segment) => safeTrim(segment.sourceText))
+    ) {
+      const message = m.app.errors.noRecognitionTextToExport
       setProcessError(message)
       startTransition(() => {
         setProjectState((current) => ({
@@ -2590,7 +2656,6 @@ function App() {
 
     try {
       const exportSegments = projectState.segments
-      const requestedExportFormat = formatOverride ?? selectedExportFormat
       logExportDebugSummary(
         exportSegments,
         requestedExportFormat,
@@ -2605,11 +2670,11 @@ function App() {
           outputFormats: Array.from(
             new Set([
               ...(currentTaskRef.current?.outputFormats ?? []),
-              requestedExportFormat === 'word'
-                ? `word:${selectedWordExportMode}`
-                : selectedOutputMode === 'bilingual'
-                  ? 'srt:bilingual'
-                  : 'srt:single',
+              getTaskOutputFormat(
+                requestedExportFormat,
+                selectedOutputMode,
+                selectedWordExportMode,
+              ),
             ]),
           ),
         },
@@ -3071,9 +3136,7 @@ function App() {
       : resolvedWorkspace === 'export'
           ? isWorking
             ? m.common.buttons.exporting
-            : selectedExportFormat === 'word'
-              ? m.common.buttons.exportWord
-              : m.common.buttons.exportSrt
+            : getPrimaryExportActionLabel(selectedExportFormat, m)
           : resolvedWorkspace === 'settings'
             ? m.settingsPage.useUninstallPanelAction
           : importResult
