@@ -22,6 +22,21 @@ type SubtitleAgentPanelProps = {
   sourceLanguage?: string
   targetLanguage?: string
   bilingualMode?: string
+  currentSegmentSignature: string
+  subtitleQualityResult: SubtitleQualityResult | null
+  contentSummaryResult: ContentSummaryResult | null
+  isSubtitleQualityStale: boolean
+  isContentSummaryStale: boolean
+  onSubtitleQualityResultChange: (
+    result: SubtitleQualityResult,
+    segmentSignature: string,
+    segmentCount: number,
+  ) => void
+  onContentSummaryResultChange: (
+    result: ContentSummaryResult,
+    segmentSignature: string,
+    segmentCount: number,
+  ) => void
 }
 
 function normalizeTimeValue(value: number): number {
@@ -62,6 +77,13 @@ export function SubtitleAgentPanel({
   sourceLanguage,
   targetLanguage,
   bilingualMode,
+  currentSegmentSignature,
+  subtitleQualityResult,
+  contentSummaryResult,
+  isSubtitleQualityStale,
+  isContentSummaryStale,
+  onSubtitleQualityResultChange,
+  onContentSummaryResultChange,
 }: SubtitleAgentPanelProps) {
   const { m } = useI18n()
   const agentMessages = m.previewPage.agent
@@ -70,15 +92,11 @@ export function SubtitleAgentPanel({
   const [subtitleQualityAgentError, setSubtitleQualityAgentError] = useState<
     string | null
   >(null)
-  const [subtitleQualityAgentResult, setSubtitleQualityAgentResult] =
-    useState<SubtitleQualityResult | null>(null)
   const [contentSummaryAgentLoading, setContentSummaryAgentLoading] =
     useState(false)
   const [contentSummaryAgentError, setContentSummaryAgentError] = useState<
     string | null
   >(null)
-  const [contentSummaryAgentResult, setContentSummaryAgentResult] =
-    useState<ContentSummaryResult | null>(null)
 
   const hasSegments = segments.length > 0
   const fallbackSourceLanguage =
@@ -128,11 +146,14 @@ export function SubtitleAgentPanel({
 
     setSubtitleQualityAgentLoading(true)
     setSubtitleQualityAgentError(null)
-    setSubtitleQualityAgentResult(null)
 
     try {
       const result = await analyzeSubtitleQuality(buildAgentRequest(config))
-      setSubtitleQualityAgentResult(result)
+      onSubtitleQualityResultChange(
+        result,
+        currentSegmentSignature,
+        agentRequestSegments.length,
+      )
     } catch (error) {
       setSubtitleQualityAgentError(
         getErrorMessage(error, agentMessages.qualityError),
@@ -154,11 +175,14 @@ export function SubtitleAgentPanel({
 
     setContentSummaryAgentLoading(true)
     setContentSummaryAgentError(null)
-    setContentSummaryAgentResult(null)
 
     try {
       const result = await summarizeSubtitleContent(buildAgentRequest(config))
-      setContentSummaryAgentResult(result)
+      onContentSummaryResultChange(
+        result,
+        currentSegmentSignature,
+        agentRequestSegments.length,
+      )
     } catch (error) {
       setContentSummaryAgentError(
         getErrorMessage(error, agentMessages.summaryError),
@@ -217,9 +241,9 @@ export function SubtitleAgentPanel({
                 <h3>{agentMessages.qualityTitle}</h3>
                 <p>{agentMessages.qualityDescription}</p>
               </div>
-              {subtitleQualityAgentResult ? (
+              {subtitleQualityResult ? (
                 <span className="agent-score">
-                  {normalizeScore(subtitleQualityAgentResult.score)}
+                  {normalizeScore(subtitleQualityResult.score)}
                   <small>{agentMessages.scoreLabel}</small>
                 </span>
               ) : null}
@@ -231,13 +255,18 @@ export function SubtitleAgentPanel({
               </div>
             ) : null}
 
-            {subtitleQualityAgentResult ? (
+            {subtitleQualityResult ? (
               <div className="agent-summary-section">
-                <p className="agent-note">{subtitleQualityAgentResult.summary}</p>
+                {isSubtitleQualityStale ? (
+                  <div className="warning-banner">
+                    <p>{agentMessages.staleNotice}</p>
+                  </div>
+                ) : null}
+                <p className="agent-note">{subtitleQualityResult.summary}</p>
                 <h4>{agentMessages.issuesTitle}</h4>
-                {subtitleQualityAgentResult.issues.length > 0 ? (
+                {subtitleQualityResult.issues.length > 0 ? (
                   <div className="agent-issue-list">
-                    {subtitleQualityAgentResult.issues.map((issue, index) => (
+                    {subtitleQualityResult.issues.map((issue, index) => (
                       <article
                         className="agent-issue"
                         key={`${issue.segmentId}-${issue.type}-${index}`}
@@ -279,17 +308,22 @@ export function SubtitleAgentPanel({
               </div>
             ) : null}
 
-            {contentSummaryAgentResult ? (
+            {contentSummaryResult ? (
               <div className="agent-summary-section">
+                {isContentSummaryStale ? (
+                  <div className="warning-banner">
+                    <p>{agentMessages.staleNotice}</p>
+                  </div>
+                ) : null}
                 <h4>{agentMessages.oneSentenceTitle}</h4>
                 <p className="agent-note">
-                  {contentSummaryAgentResult.oneSentenceSummary}
+                  {contentSummaryResult.oneSentenceSummary}
                 </p>
 
                 <h4>{agentMessages.chaptersTitle}</h4>
-                {contentSummaryAgentResult.chapters.length > 0 ? (
+                {contentSummaryResult.chapters.length > 0 ? (
                   <div className="agent-chapter-list">
-                    {contentSummaryAgentResult.chapters.map((chapter, index) => (
+                    {contentSummaryResult.chapters.map((chapter, index) => (
                       <article
                         className="agent-chapter"
                         key={`${chapter.start}-${chapter.end}-${index}`}
@@ -308,9 +342,9 @@ export function SubtitleAgentPanel({
                 )}
 
                 <h4>{agentMessages.keywordsTitle}</h4>
-                {contentSummaryAgentResult.keywords.length > 0 ? (
+                {contentSummaryResult.keywords.length > 0 ? (
                   <div className="agent-keyword-list">
-                    {contentSummaryAgentResult.keywords.map((keyword, index) => (
+                    {contentSummaryResult.keywords.map((keyword, index) => (
                       <div className="agent-keyword" key={`${keyword.term}-${index}`}>
                         <strong>{keyword.term}</strong>
                         {keyword.translation ? <span>{keyword.translation}</span> : null}
@@ -324,7 +358,7 @@ export function SubtitleAgentPanel({
 
                 <h4>{agentMessages.studyNotesTitle}</h4>
                 <p className="agent-note agent-note--prewrap">
-                  {contentSummaryAgentResult.studyNotes}
+                  {contentSummaryResult.studyNotes}
                 </p>
               </div>
             ) : null}

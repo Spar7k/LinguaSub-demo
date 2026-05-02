@@ -1136,6 +1136,8 @@ const enMessages = {
       configError: 'Please configure a translation model API in Settings first.',
       qualityError: 'Subtitle quality analysis failed. Please try again.',
       summaryError: 'Content summary generation failed. Please try again.',
+      staleNotice:
+        'Subtitles have changed. Consider regenerating the Agent result.',
       actions: {
         analyzeQuality: 'Analyze Subtitle Quality',
         analyzingQuality: 'Analyzing...',
@@ -1513,6 +1515,7 @@ const zhMessagesNormalized = {
       configError: '请先在设置中配置翻译模型 API。',
       qualityError: '字幕质量诊断失败，请重试。',
       summaryError: '内容总结生成失败，请重试。',
+      staleNotice: '字幕内容已变化，建议重新生成 Agent 结果。',
       actions: {
         analyzeQuality: 'AI 诊断字幕质量',
         analyzingQuality: '诊断中...',

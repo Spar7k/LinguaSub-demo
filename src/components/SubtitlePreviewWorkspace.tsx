@@ -1,6 +1,7 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 
 import { useI18n } from '../i18n/useI18n'
+import type { ContentSummaryResult, SubtitleQualityResult } from '../types/agent'
 import type { ImportResult } from '../types/import'
 import type { AppConfig, ProjectState, ProviderName, SubtitleSegment } from '../types/models'
 import type { TaskLogEntry } from '../types/tasks'
@@ -24,12 +25,27 @@ type SubtitlePreviewWorkspaceProps = {
   taskLogs: TaskLogEntry[]
   hasUnsavedChanges: boolean
   lastSavedAt: string | null
+  currentSegmentSignature: string
+  subtitleQualityAgentResult: SubtitleQualityResult | null
+  contentSummaryAgentResult: ContentSummaryResult | null
+  isSubtitleQualityAgentStale: boolean
+  isContentSummaryAgentStale: boolean
   onUpdateSegment: (
     segmentId: string,
     patch: Pick<SubtitleSegment, 'sourceText' | 'translatedText'>,
   ) => void
   onSaveSegments: () => void
   onRetranslateSegment: (segment: SubtitleSegment) => Promise<void>
+  onSubtitleQualityAgentResultChange: (
+    result: SubtitleQualityResult,
+    segmentSignature: string,
+    segmentCount: number,
+  ) => void
+  onContentSummaryAgentResultChange: (
+    result: ContentSummaryResult,
+    segmentSignature: string,
+    segmentCount: number,
+  ) => void
 }
 
 export function SubtitlePreviewWorkspace({
@@ -40,9 +56,16 @@ export function SubtitlePreviewWorkspace({
   taskLogs,
   hasUnsavedChanges,
   lastSavedAt,
+  currentSegmentSignature,
+  subtitleQualityAgentResult,
+  contentSummaryAgentResult,
+  isSubtitleQualityAgentStale,
+  isContentSummaryAgentStale,
   onUpdateSegment,
   onSaveSegments,
   onRetranslateSegment,
+  onSubtitleQualityAgentResultChange,
+  onContentSummaryAgentResultChange,
 }: SubtitlePreviewWorkspaceProps) {
   const { m } = useI18n()
   const [searchQuery, setSearchQuery] = useState('')
@@ -218,6 +241,13 @@ export function SubtitlePreviewWorkspace({
         sourceLanguage={firstSegment?.sourceLanguage}
         targetLanguage={firstSegment?.targetLanguage}
         bilingualMode={config?.outputMode}
+        currentSegmentSignature={currentSegmentSignature}
+        subtitleQualityResult={subtitleQualityAgentResult}
+        contentSummaryResult={contentSummaryAgentResult}
+        isSubtitleQualityStale={isSubtitleQualityAgentStale}
+        isContentSummaryStale={isContentSummaryAgentStale}
+        onSubtitleQualityResultChange={onSubtitleQualityAgentResultChange}
+        onContentSummaryResultChange={onContentSummaryAgentResultChange}
       />
 
       <SectionCard

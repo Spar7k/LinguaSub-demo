@@ -2,6 +2,7 @@
   startTransition,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -24,6 +25,12 @@ import {
   type SidebarStatus,
 } from './data/workflow'
 import { useI18n } from './i18n/useI18n'
+import {
+  buildAgentSegmentSignature,
+  type AgentSessionState,
+  type ContentSummaryResult,
+  type SubtitleQualityResult,
+} from './types/agent'
 import {
   loadConfig,
   saveConfig,
@@ -135,6 +142,13 @@ type StartTranslationOptions = {
 }
 type RestoreTaskTarget = 'translation' | 'preview' | 'export'
 type AppNoticeTone = 'info' | 'warn'
+
+function createEmptyAgentSessionState(): AgentSessionState {
+  return {
+    subtitleQuality: null,
+    contentSummary: null,
+  }
+}
 
 function getVideoSubtitleSidebarCopy(
   language: ReturnType<typeof useI18n>['language'],
@@ -1516,6 +1530,9 @@ function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('import')
   const [lastMainWorkspace, setLastMainWorkspace] = useState<MainWorkspaceKey>('import')
   const [projectState, setProjectState] = useState(createEmptyProjectState())
+  const [agentState, setAgentState] = useState<AgentSessionState>(
+    createEmptyAgentSessionState,
+  )
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -1863,6 +1880,7 @@ function App() {
       setCurrentTask(task)
       setImportResult(restoredImport)
       setProjectState(restoredProject)
+      setAgentState(createEmptyAgentSessionState())
       setImportError(null)
       setProcessError(options?.processErrorOverride ?? null)
       setExportResult(null)
@@ -1983,6 +2001,7 @@ function App() {
     startTransition(() => {
       setImportResult(result)
       setProjectState(result.projectState)
+      setAgentState(createEmptyAgentSessionState())
       setCurrentTask(taskRecord)
       setImportError(null)
       setProcessError(null)
@@ -2011,6 +2030,7 @@ function App() {
       if (message) {
         setImportResult(null)
         setProjectState(createEmptyProjectState())
+        setAgentState(createEmptyAgentSessionState())
         setCurrentTask(null)
         setTranscriptionRun(null)
         setTranslationRun(null)
@@ -2095,6 +2115,7 @@ function App() {
       startTransition(() => {
         setImportResult(nextImportResult)
         setImportError(null)
+        setAgentState(createEmptyAgentSessionState())
         setProjectState({
           currentFile: { ...response.currentFile },
           segments: cloneSegments(response.segments),
@@ -2307,6 +2328,9 @@ function App() {
           status: 'translating',
           error: null,
         }))
+        if (activeProjectState.segments.length === 0) {
+          setAgentState(createEmptyAgentSessionState())
+        }
         setTranscriptionRun((current) => preparedResult.transcriptionRun ?? current)
       })
 
@@ -2562,7 +2586,53 @@ function App() {
     )
   }
 
+  function handleSubtitleQualityAgentResultChange(
+    result: SubtitleQualityResult,
+    segmentSignature: string,
+    segmentCount: number,
+  ) {
+    startTransition(() => {
+      setAgentState((current) => ({
+        ...current,
+        subtitleQuality: {
+          result,
+          segmentSignature,
+          generatedAt: new Date().toISOString(),
+          segmentCount,
+        },
+      }))
+    })
+  }
+
+  function handleContentSummaryAgentResultChange(
+    result: ContentSummaryResult,
+    segmentSignature: string,
+    segmentCount: number,
+  ) {
+    startTransition(() => {
+      setAgentState((current) => ({
+        ...current,
+        contentSummary: {
+          result,
+          segmentSignature,
+          generatedAt: new Date().toISOString(),
+          segmentCount,
+        },
+      }))
+    })
+  }
+
   const selectedOutputMode = config?.outputMode ?? fallbackOutputMode
+  const currentSegmentSignature = useMemo(
+    () => buildAgentSegmentSignature(projectState.segments),
+    [projectState.segments],
+  )
+  const isSubtitleQualityAgentStale =
+    agentState.subtitleQuality !== null &&
+    agentState.subtitleQuality.segmentSignature !== currentSegmentSignature
+  const isContentSummaryAgentStale =
+    agentState.contentSummary !== null &&
+    agentState.contentSummary.segmentSignature !== currentSegmentSignature
   const currentLanguageLabel = language === 'zh' ? m.common.language.zh : m.common.language.en
 
   async function handleStartSpeechModelDownload(request: SpeechModelDownloadRequest) {
@@ -3369,9 +3439,20 @@ function App() {
               taskLogs={currentTask?.logs ?? []}
               hasUnsavedChanges={hasUnsavedChanges}
               lastSavedAt={lastSavedAt}
+              currentSegmentSignature={currentSegmentSignature}
+              subtitleQualityAgentResult={agentState.subtitleQuality?.result ?? null}
+              contentSummaryAgentResult={agentState.contentSummary?.result ?? null}
+              isSubtitleQualityAgentStale={isSubtitleQualityAgentStale}
+              isContentSummaryAgentStale={isContentSummaryAgentStale}
               onUpdateSegment={handleUpdateSegment}
               onSaveSegments={handleSaveSegments}
               onRetranslateSegment={handleRetranslateSegment}
+              onSubtitleQualityAgentResultChange={
+                handleSubtitleQualityAgentResultChange
+              }
+              onContentSummaryAgentResultChange={
+                handleContentSummaryAgentResultChange
+              }
             />
           ) : null}
 

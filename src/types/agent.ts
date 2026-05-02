@@ -1,4 +1,4 @@
-import type { AppConfig } from './models'
+import type { AppConfig, SubtitleSegment } from './models'
 
 export type AgentIssueSeverity = 'info' | 'warning' | 'error'
 
@@ -64,4 +64,52 @@ export type ContentSummaryResult = {
   keywords: ContentSummaryKeyword[]
   studyNotes: string
   diagnostics?: Record<string, unknown>
+}
+
+export type AgentStoredResult<T> = {
+  result: T
+  segmentSignature: string
+  generatedAt: string
+  segmentCount: number
+}
+
+export type AgentSessionState = {
+  subtitleQuality: AgentStoredResult<SubtitleQualityResult> | null
+  contentSummary: AgentStoredResult<ContentSummaryResult> | null
+}
+
+type SegmentSignatureInput = Pick<
+  SubtitleSegment,
+  'id' | 'start' | 'end' | 'sourceText' | 'translatedText'
+>
+
+function appendHashValue(hash: number, value: string): number {
+  const normalizedValue = `${value.length}:${value};`
+  let nextHash = hash
+
+  for (let index = 0; index < normalizedValue.length; index += 1) {
+    nextHash ^= normalizedValue.charCodeAt(index)
+    nextHash = Math.imul(nextHash, 0x01000193) >>> 0
+  }
+
+  return nextHash
+}
+
+export function buildAgentSegmentSignature(
+  segments: SegmentSignatureInput[],
+): string {
+  let hash = 0x811c9dc5
+
+  hash = appendHashValue(hash, 'linguasub-agent-segments-v1')
+  hash = appendHashValue(hash, String(segments.length))
+
+  for (const segment of segments) {
+    hash = appendHashValue(hash, segment.id)
+    hash = appendHashValue(hash, String(segment.start))
+    hash = appendHashValue(hash, String(segment.end))
+    hash = appendHashValue(hash, segment.sourceText)
+    hash = appendHashValue(hash, segment.translatedText)
+  }
+
+  return `v1:${segments.length}:${hash.toString(36)}`
 }
