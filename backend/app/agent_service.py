@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from .models import AppConfig, ProviderName, SubtitleSegment
@@ -19,7 +20,11 @@ from .translation_service import (
 DEFAULT_AGENT_TIMEOUT_SECONDS = 60
 MIN_AGENT_TIMEOUT_SECONDS = 5
 MAX_AGENT_TIMEOUT_SECONDS = 180
-AGENT_MAX_INPUT_CHAR_COUNT = 30000
+AGENT_MAX_CHUNK_INPUT_CHAR_COUNT = 30000
+AGENT_MAX_INPUT_CHAR_COUNT = AGENT_MAX_CHUNK_INPUT_CHAR_COUNT
+AGENT_MAX_CHUNK_COUNT = 10
+AGENT_MAX_SEGMENT_TEXT_CHAR_COUNT = 8000
+MAX_AGENT_ISSUES = 100
 
 SUBTITLE_QUALITY_SYSTEM_PROMPT = """
 You are LinguaSub's subtitle quality diagnosis Agent.
@@ -95,6 +100,14 @@ VALID_ISSUE_TYPES = {
     "terminology_inconsistent",
     "unnatural_translation",
 }
+
+
+@dataclass(slots=True)
+class AgentChunkPlan:
+    chunks: list[list[dict[str, str | int]]]
+    totalSegments: int
+    analyzedSegments: int
+    truncatedSegmentIds: list[str]
 
 
 class AgentServiceError(TranslationServiceError):
@@ -218,30 +231,37 @@ def analyze_subtitle_quality(
     bilingual_mode: str | None = None,
     timeout_seconds: int | str | None = DEFAULT_AGENT_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    compact_segments = _build_compact_segments(segments)
-    segment_ids = {item["id"] for item in compact_segments}
-    user_prompt = {
-        "instruction": (
-            "Diagnose subtitle quality and return JSON only. "
-            "Do not modify subtitles or include rewritten subtitle text."
-        ),
-        "sourceLanguage": _safe_optional_string(source_language),
-        "targetLanguage": _safe_optional_string(target_language),
-        "bilingualMode": _safe_optional_string(bilingual_mode),
-        "segments": compact_segments,
-    }
-    response_object = _request_agent_json_object(
-        config=config,
-        system_prompt=SUBTITLE_QUALITY_SYSTEM_PROMPT,
-        user_prompt=user_prompt,
-        timeout_seconds=timeout_seconds,
-    )
+    plan = _build_compact_segment_plan(segments)
+    chunk_results: list[dict[str, Any]] = []
 
-    return _normalize_subtitle_quality_result(
-        response_object,
-        allowed_segment_ids=segment_ids,
-        segment_count=len(compact_segments),
-    )
+    for chunk_index, chunk_segments in enumerate(plan.chunks):
+        user_prompt = {
+            "instruction": (
+                "Diagnose subtitle quality for this chunk and return JSON only. "
+                "Do not modify subtitles or include rewritten subtitle text."
+            ),
+            "sourceLanguage": _safe_optional_string(source_language),
+            "targetLanguage": _safe_optional_string(target_language),
+            "bilingualMode": _safe_optional_string(bilingual_mode),
+            "chunkIndex": chunk_index + 1,
+            "chunkCount": len(plan.chunks),
+            "segments": chunk_segments,
+        }
+        response_object = _request_agent_json_object(
+            config=config,
+            system_prompt=SUBTITLE_QUALITY_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            timeout_seconds=timeout_seconds,
+        )
+        chunk_results.append(
+            _normalize_subtitle_quality_result(
+                response_object,
+                allowed_segment_ids={item["id"] for item in chunk_segments},
+                segment_count=len(chunk_segments),
+            )
+        )
+
+    return _merge_subtitle_quality_results(chunk_results, plan)
 
 
 def summarize_subtitle_content(
@@ -253,25 +273,31 @@ def summarize_subtitle_content(
     bilingual_mode: str | None = None,
     timeout_seconds: int | str | None = DEFAULT_AGENT_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    compact_segments = _build_compact_segments(segments)
-    user_prompt = {
-        "instruction": (
-            "Summarize the video content and produce structured study notes. "
-            "Return JSON only."
-        ),
-        "sourceLanguage": _safe_optional_string(source_language),
-        "targetLanguage": _safe_optional_string(target_language),
-        "bilingualMode": _safe_optional_string(bilingual_mode),
-        "segments": compact_segments,
-    }
-    response_object = _request_agent_json_object(
-        config=config,
-        system_prompt=CONTENT_SUMMARY_SYSTEM_PROMPT,
-        user_prompt=user_prompt,
-        timeout_seconds=timeout_seconds,
-    )
+    plan = _build_compact_segment_plan(segments)
+    chunk_results: list[dict[str, Any]] = []
 
-    return _normalize_content_summary_result(response_object)
+    for chunk_index, chunk_segments in enumerate(plan.chunks):
+        user_prompt = {
+            "instruction": (
+                "Summarize this subtitle chunk and produce structured study notes. "
+                "Return JSON only."
+            ),
+            "sourceLanguage": _safe_optional_string(source_language),
+            "targetLanguage": _safe_optional_string(target_language),
+            "bilingualMode": _safe_optional_string(bilingual_mode),
+            "chunkIndex": chunk_index + 1,
+            "chunkCount": len(plan.chunks),
+            "segments": chunk_segments,
+        }
+        response_object = _request_agent_json_object(
+            config=config,
+            system_prompt=CONTENT_SUMMARY_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            timeout_seconds=timeout_seconds,
+        )
+        chunk_results.append(_normalize_content_summary_result(response_object))
+
+    return _merge_content_summary_results(chunk_results, plan)
 
 
 def _request_agent_json_object(
@@ -307,12 +333,18 @@ def _request_agent_json_object(
 def _build_compact_segments(
     segments: list[SubtitleSegment],
 ) -> list[dict[str, str | int]]:
+    plan = _build_compact_segment_plan(segments)
+    return [segment for chunk in plan.chunks for segment in chunk]
+
+
+def _build_compact_segment_plan(segments: list[SubtitleSegment]) -> AgentChunkPlan:
     if not segments:
         raise AgentInputError(
             "No subtitle segments available for Agent analysis. Please transcribe or import subtitles first."
         )
 
     compact_segments: list[dict[str, str | int]] = []
+    truncated_segment_ids: list[str] = []
     for segment in segments:
         segment_id = _safe_string(segment.id).strip()
         if not segment_id:
@@ -320,24 +352,83 @@ def _build_compact_segments(
                 "Every subtitle segment must have a stable id before using the Agent."
             )
 
+        source_text, source_truncated = _truncate_segment_text(
+            _safe_string(segment.sourceText)
+        )
+        translated_text, translated_truncated = _truncate_segment_text(
+            _safe_string(segment.translatedText)
+        )
+        if source_truncated or translated_truncated:
+            truncated_segment_ids.append(segment_id)
+
         compact_segments.append(
             {
                 "id": segment_id,
                 "start": _safe_int(segment.start),
                 "end": _safe_int(segment.end),
-                "sourceText": _safe_string(segment.sourceText),
-                "translatedText": _safe_string(segment.translatedText),
+                "sourceText": source_text,
+                "translatedText": translated_text,
             }
         )
 
-    serialized = json.dumps({"segments": compact_segments}, ensure_ascii=False)
-    if len(serialized) > AGENT_MAX_INPUT_CHAR_COUNT:
+    chunks = _chunk_compact_segments(compact_segments)
+    if len(chunks) > AGENT_MAX_CHUNK_COUNT:
         raise AgentInputError(
-            "Subtitle content is too long for the first Agent version. "
-            "Please try a shorter clip or split the subtitle file before using this Agent."
+            "Subtitle content is too long for this Agent request. "
+            "Please shorten the video or split the subtitle file into smaller parts."
         )
 
-    return compact_segments
+    return AgentChunkPlan(
+        chunks=chunks,
+        totalSegments=len(compact_segments),
+        analyzedSegments=sum(len(chunk) for chunk in chunks),
+        truncatedSegmentIds=truncated_segment_ids,
+    )
+
+
+def _chunk_compact_segments(
+    compact_segments: list[dict[str, str | int]],
+) -> list[list[dict[str, str | int]]]:
+    chunks: list[list[dict[str, str | int]]] = []
+    current_chunk: list[dict[str, str | int]] = []
+
+    for segment in compact_segments:
+        single_segment_size = _measure_agent_segment_payload_chars([segment])
+        if single_segment_size > AGENT_MAX_CHUNK_INPUT_CHAR_COUNT:
+            raise AgentInputError(
+                "A subtitle segment is too long for Agent analysis even after safe truncation. "
+                f"segmentId={segment['id']}"
+            )
+
+        candidate_chunk = [*current_chunk, segment]
+        candidate_size = _measure_agent_segment_payload_chars(candidate_chunk)
+        if (
+            current_chunk
+            and candidate_size > AGENT_MAX_CHUNK_INPUT_CHAR_COUNT
+        ):
+            chunks.append(current_chunk)
+            current_chunk = [segment]
+            continue
+
+        current_chunk = candidate_chunk
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return chunks
+
+
+def _measure_agent_segment_payload_chars(
+    compact_segments: list[dict[str, str | int]],
+) -> int:
+    return len(json.dumps({"segments": compact_segments}, ensure_ascii=False))
+
+
+def _truncate_segment_text(text: str) -> tuple[str, bool]:
+    if len(text) <= AGENT_MAX_SEGMENT_TEXT_CHAR_COUNT:
+        return text, False
+
+    return text[:AGENT_MAX_SEGMENT_TEXT_CHAR_COUNT], True
 
 
 def _normalize_subtitle_quality_result(
@@ -446,6 +537,207 @@ def _normalize_content_summary_result(
         "keywords": keywords,
         "studyNotes": _safe_string(response_object.get("studyNotes")),
     }
+
+
+def _merge_subtitle_quality_results(
+    chunk_results: list[dict[str, Any]],
+    plan: AgentChunkPlan,
+) -> dict[str, Any]:
+    if not chunk_results:
+        raise TranslationParseError("Agent returned no subtitle quality results.")
+
+    summaries: list[str] = []
+    all_issues: list[dict[str, str]] = []
+    filtered_segment_ids: list[str] = []
+    filtered_issue_types: list[str] = []
+    invalid_issue_item_count = 0
+    weighted_score_total = 0
+
+    for chunk_result, chunk_segments in zip(chunk_results, plan.chunks):
+        segment_count = len(chunk_segments)
+        weighted_score_total += _normalize_score(chunk_result.get("score")) * segment_count
+        summary = _safe_string(chunk_result.get("summary")).strip()
+        if summary:
+            summaries.append(summary)
+        raw_issues = chunk_result.get("issues")
+        if isinstance(raw_issues, list):
+            all_issues.extend(
+                item for item in raw_issues if isinstance(item, dict)
+            )
+
+        diagnostics = _safe_object(chunk_result.get("diagnostics"))
+        filtered_segment_ids.extend(
+            _safe_string(item)
+            for item in diagnostics.get("filteredIssueSegmentIds", [])
+            if _safe_string(item)
+        )
+        filtered_issue_types.extend(
+            _safe_string(item)
+            for item in diagnostics.get("filteredIssueTypes", [])
+            if _safe_string(item)
+        )
+        invalid_issue_item_count += _safe_int(
+            diagnostics.get("invalidIssueItemCount", 0)
+        )
+
+    issue_limit_applied = len(all_issues) > MAX_AGENT_ISSUES
+    limited_issues = all_issues[:MAX_AGENT_ISSUES]
+
+    return {
+        "score": _normalize_score(weighted_score_total / max(plan.analyzedSegments, 1)),
+        "summary": _merge_quality_summaries(summaries, plan),
+        "issues": limited_issues,
+        "diagnostics": _build_chunk_diagnostics(
+            plan,
+            {
+                "issueLimit": MAX_AGENT_ISSUES,
+                "issueLimitApplied": issue_limit_applied,
+                "filteredIssueSegmentIds": filtered_segment_ids,
+                "filteredIssueTypes": filtered_issue_types,
+                "invalidIssueItemCount": invalid_issue_item_count,
+                "chunkScores": [
+                    _normalize_score(result.get("score")) for result in chunk_results
+                ],
+            },
+        ),
+    }
+
+
+def _merge_content_summary_results(
+    chunk_results: list[dict[str, Any]],
+    plan: AgentChunkPlan,
+) -> dict[str, Any]:
+    if not chunk_results:
+        raise TranslationParseError("Agent returned no content summary results.")
+
+    if len(chunk_results) == 1:
+        merged = dict(chunk_results[0])
+        merged["diagnostics"] = _build_chunk_diagnostics(
+            plan,
+            {
+                "finalMergePerformed": False,
+                "keywordDeduplicated": False,
+            },
+        )
+        return merged
+
+    chapters: list[dict[str, str | int]] = []
+    keyword_by_term: dict[str, dict[str, str]] = {}
+    one_sentence_parts: list[str] = []
+    study_note_parts: list[str] = []
+
+    for index, chunk_result in enumerate(chunk_results, start=1):
+        raw_chapters = chunk_result.get("chapters", [])
+        if isinstance(raw_chapters, list):
+            chapters.extend(item for item in raw_chapters if isinstance(item, dict))
+
+        raw_keywords = chunk_result.get("keywords", [])
+        if isinstance(raw_keywords, list):
+            for item in raw_keywords:
+                if not isinstance(item, dict):
+                    continue
+                term = _safe_string(item.get("term")).strip()
+                if not term:
+                    continue
+                normalized_term = term.casefold()
+                if normalized_term not in keyword_by_term:
+                    keyword_by_term[normalized_term] = {
+                        "term": term,
+                        "translation": _safe_string(item.get("translation")),
+                        "explanation": _safe_string(item.get("explanation")),
+                    }
+
+        one_sentence_summary = _safe_string(
+            chunk_result.get("oneSentenceSummary")
+        ).strip()
+        if one_sentence_summary:
+            one_sentence_parts.append(one_sentence_summary)
+
+        study_notes = _safe_string(chunk_result.get("studyNotes")).strip()
+        if study_notes:
+            study_note_parts.append(f"Part {index}: {study_notes}")
+
+    return {
+        "oneSentenceSummary": _merge_content_one_sentence(
+            one_sentence_parts,
+            plan,
+        ),
+        "chapters": chapters,
+        "keywords": list(keyword_by_term.values()),
+        "studyNotes": "\n\n".join(study_note_parts),
+        "diagnostics": _build_chunk_diagnostics(
+            plan,
+            {
+                "finalMergePerformed": False,
+                "keywordDeduplicated": True,
+            },
+        ),
+    }
+
+
+def _merge_quality_summaries(
+    summaries: list[str],
+    plan: AgentChunkPlan,
+) -> str:
+    if len(plan.chunks) == 1:
+        return summaries[0] if summaries else ""
+
+    if not summaries:
+        return (
+            f"Analyzed {plan.analyzedSegments} subtitle segments in "
+            f"{len(plan.chunks)} chunks."
+        )
+
+    return (
+        f"Analyzed {plan.analyzedSegments} subtitle segments in "
+        f"{len(plan.chunks)} chunks. Main findings: "
+        f"{_join_limited_texts(summaries, limit=700)}"
+    )
+
+
+def _merge_content_one_sentence(
+    summaries: list[str],
+    plan: AgentChunkPlan,
+) -> str:
+    if len(plan.chunks) == 1:
+        return summaries[0] if summaries else ""
+
+    if not summaries:
+        return (
+            f"Summarized {plan.analyzedSegments} subtitle segments across "
+            f"{len(plan.chunks)} chunks."
+        )
+
+    return (
+        f"Summarized {plan.analyzedSegments} subtitle segments across "
+        f"{len(plan.chunks)} chunks: {_join_limited_texts(summaries, limit=500)}"
+    )
+
+
+def _join_limited_texts(values: list[str], *, limit: int) -> str:
+    joined = " ".join(value.strip() for value in values if value.strip())
+    if len(joined) <= limit:
+        return joined
+    return joined[:limit].rstrip() + "...(truncated)"
+
+
+def _build_chunk_diagnostics(
+    plan: AgentChunkPlan,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    diagnostics: dict[str, Any] = {
+        "chunked": len(plan.chunks) > 1,
+        "chunkCount": len(plan.chunks),
+        "totalSegments": plan.totalSegments,
+        "analyzedSegments": plan.analyzedSegments,
+        "maxChunkInputChars": AGENT_MAX_CHUNK_INPUT_CHAR_COUNT,
+        "maxChunkCount": AGENT_MAX_CHUNK_COUNT,
+        "truncated": bool(plan.truncatedSegmentIds),
+        "truncatedSegmentIds": plan.truncatedSegmentIds,
+    }
+    if extra:
+        diagnostics.update(extra)
+    return diagnostics
 
 
 def _normalize_score(value: Any) -> int:
