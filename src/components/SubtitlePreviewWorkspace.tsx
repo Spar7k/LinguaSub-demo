@@ -7,6 +7,7 @@ import type { TaskLogEntry } from '../types/tasks'
 import { safeTrim } from '../utils/config'
 import { EditableSubtitleRow } from './EditableSubtitleRow'
 import { SectionCard } from './SectionCard'
+import { SubtitleAgentPanel } from './SubtitleAgentPanel'
 import { SubtitleSearchToolbar } from './SubtitleSearchToolbar'
 import { TaskLogPanel } from './TaskLogPanel'
 
@@ -49,6 +50,7 @@ export function SubtitlePreviewWorkspace({
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const deferredSearchQuery = useDeferredValue(safeTrim(searchQuery).toLowerCase())
   const translatedCount = projectState.segments.filter((segment) => safeTrim(segment.translatedText)).length
+  const firstSegment = projectState.segments[0]
   const filteredSegments = useMemo(() => {
     if (!deferredSearchQuery) {
       return projectState.segments
@@ -209,6 +211,14 @@ export function SubtitlePreviewWorkspace({
           </div>
         )}
       </SectionCard>
+
+      <SubtitleAgentPanel
+        segments={projectState.segments}
+        config={config}
+        sourceLanguage={firstSegment?.sourceLanguage}
+        targetLanguage={firstSegment?.targetLanguage}
+        bilingualMode={config?.outputMode}
+      />
 
       <SectionCard
         eyebrow={m.previewPage.sections.preview.eyebrow}
