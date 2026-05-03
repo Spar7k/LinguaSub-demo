@@ -196,6 +196,10 @@ const zhMessages = {
         label: '预览',
         description: '检查原文与译文',
       },
+      aiWorkbench: {
+        label: 'AI 工作台',
+        description: '用自然语言生成内容',
+      },
       export: {
         label: '导出',
         description: '生成 SRT 输出',
@@ -224,6 +228,10 @@ const zhMessages = {
       preview: {
         title: '字幕预览',
         description: '检查翻译结果。当前项目状态中的每条字幕片段都同时包含原文和译文。',
+      },
+      aiWorkbench: {
+        title: 'AI 工作台',
+        description: '用自然语言告诉 LinguaSub 你想完成什么。后续将基于当前字幕生成总结、学习笔记、汇报稿和文案。',
       },
       export: {
         title: '导出字幕',
@@ -291,6 +299,81 @@ const zhMessages = {
       configLoadFailed: '无法加载翻译配置。',
       uninstallStartFailed: '无法启动 Windows 卸载流程。',
     },
+  },
+  aiWorkbench: {
+    eyebrow: 'AI 工作台',
+    title: 'AI 工作台',
+    subtitle: '输入一句话，让 LinguaSub 基于当前字幕生成总结、学习笔记、汇报稿或文案。',
+    commandInputLabel: '自然语言指令',
+    commandInputComingSoon: '指令输入将在下一步接入',
+    commandInputDescription:
+      '这里将成为 Command Agent 的主入口。本轮先展示当前项目上下文和后续能力占位。',
+    instructionTitle: '自然语言指令',
+    instructionDescription: '本轮先生成本地占位结果，下一步会接入真实 Command Agent。',
+    instructionPlaceholder: '帮我总结当前视频，生成适合课堂汇报的中文稿',
+    runButton: '执行指令',
+    examplesTitle: '快捷指令',
+    contextEyebrow: '项目上下文',
+    contextTitle: '当前项目上下文',
+    contextDescription: 'AI 工作台会优先基于当前字幕、译文和语言方向理解你的指令。',
+    videoName: '视频名称',
+    noVideo: '未选择视频',
+    subtitleCount: '字幕条数',
+    translatedCount: '翻译条数',
+    translatedRate: (rate: number) => `翻译完成率 ${rate}%`,
+    languageDirection: '语言方向',
+    unknownLanguageDirection: '未识别语言方向',
+    bilingualMode: '双语模式',
+    notConfigured: '未配置',
+    emptyTitle: '暂无字幕上下文',
+    emptyDescription: '请先导入视频并完成字幕识别，或导入 SRT 字幕文件。',
+    comingSoonEyebrow: '后续能力',
+    comingSoonTitle: '即将接入的能力',
+    comingSoonDescription: '第一版 AI 工作台会先围绕字幕内容生成可复制、可导出的文本结果。',
+    comingSoonItems: [
+      '自然语言指令输入',
+      '学习笔记生成',
+      '课堂汇报稿生成',
+      '小红书文案生成',
+      'Word 导出',
+    ],
+    resultEyebrow: '本地占位',
+    resultTitle: '指令结果',
+    resultDescription: '这里会展示任务理解、生成内容和建议下一步操作。',
+    resultPlaceholder: '输入指令并点击执行后，这里会先显示本地占位结果。',
+    understoodTask: '任务理解',
+    outputTitle: '输出内容',
+    suggestedActionsTitle: '建议下一步操作',
+    emptyInstruction: '请输入你想让 LinguaSub 完成的任务。',
+    noSubtitleRunError: '请先导入视频并完成字幕识别，或导入 SRT 字幕文件。',
+    mockOutput:
+      'Command Agent 接口将在下一步接入。未来这里会基于当前字幕生成真实内容。',
+    examplePrompts: [
+      {
+        title: '生成课堂汇报稿',
+        prompt:
+          '帮我总结当前视频，生成适合课堂汇报的中文稿，要求结构清晰、适合口头表达。',
+      },
+      {
+        title: '整理成学习笔记',
+        prompt: '把当前字幕整理成学习笔记，包含核心知识点、关键词解释和复习问题。',
+      },
+      {
+        title: '生成小红书风格文案',
+        prompt:
+          '根据当前视频内容生成一篇小红书风格介绍文案，要求标题吸引人、正文自然、有标签。',
+      },
+      {
+        title: '压缩成 3 分钟口播稿',
+        prompt:
+          '把当前视频内容压缩成一份 3 分钟中文口播稿，要求语言自然、适合直接朗读。',
+      },
+    ],
+    mockSuggestedActions: [
+      '接入 /agent/command',
+      '生成 Word 文档',
+      '继续优化输出风格',
+    ],
   },
   importPage: {
     sections: {
@@ -775,6 +858,10 @@ const enMessages = {
         label: 'Preview',
         description: 'Review source and translated lines',
       },
+      aiWorkbench: {
+        label: 'AI Workbench',
+        description: 'Generate content with natural language',
+      },
       export: {
         label: 'Export',
         description: 'Generate SRT output',
@@ -805,6 +892,11 @@ const enMessages = {
         title: 'Subtitle Preview',
         description:
           'Review the translated result. Every subtitle segment in the shared project state now carries both source text and translated text.',
+      },
+      aiWorkbench: {
+        title: 'AI Workbench',
+        description:
+          'Tell LinguaSub what you want in natural language. The workbench will use the current subtitles to generate summaries, notes, presentation drafts, and copy.',
       },
       export: {
         title: 'Export Results',
@@ -888,6 +980,91 @@ const enMessages = {
       configLoadFailed: 'Could not load the translation config.',
       uninstallStartFailed: 'Could not start the Windows uninstall flow.',
     },
+  },
+  aiWorkbench: {
+    eyebrow: 'AI Workbench',
+    title: 'AI Workbench',
+    subtitle:
+      'Use one sentence to ask LinguaSub to turn the current subtitles into summaries, study notes, presentation drafts, or social copy.',
+    commandInputLabel: 'Natural language command',
+    commandInputComingSoon: 'Command input will be connected next',
+    commandInputDescription:
+      'This will become the main Command Agent entry. For now, it shows the current project context and planned capabilities.',
+    instructionTitle: 'Natural language command',
+    instructionDescription:
+      'This version shows a local placeholder result. The real Command Agent will be connected next.',
+    instructionPlaceholder:
+      'Summarize the current video and turn it into a presentation script.',
+    runButton: 'Run Command',
+    examplesTitle: 'Quick prompts',
+    contextEyebrow: 'Project context',
+    contextTitle: 'Current project context',
+    contextDescription:
+      'AI Workbench will use the current subtitles, translations, and language direction to understand your instruction.',
+    videoName: 'Video name',
+    noVideo: 'No video selected',
+    subtitleCount: 'Subtitle rows',
+    translatedCount: 'Translated rows',
+    translatedRate: (rate: number) => `Translation coverage ${rate}%`,
+    languageDirection: 'Language direction',
+    unknownLanguageDirection: 'Unknown language direction',
+    bilingualMode: 'Bilingual mode',
+    notConfigured: 'Not configured',
+    emptyTitle: 'No subtitle context yet',
+    emptyDescription:
+      'Please import a video and complete transcription, or import an SRT subtitle file first.',
+    comingSoonEyebrow: 'Coming soon',
+    comingSoonTitle: 'Planned capabilities',
+    comingSoonDescription:
+      'The first AI Workbench version will focus on text results that can be copied and exported.',
+    comingSoonItems: [
+      'Natural language command input',
+      'Study note generation',
+      'Class presentation draft generation',
+      'Xiaohongshu-style copy generation',
+      'Word export',
+    ],
+    resultEyebrow: 'Local placeholder',
+    resultTitle: 'Command result',
+    resultDescription:
+      'This area will show task understanding, generated content, and suggested next actions.',
+    resultPlaceholder:
+      'Enter a command and run it to show a local placeholder result here.',
+    understoodTask: 'Task understanding',
+    outputTitle: 'Output',
+    suggestedActionsTitle: 'Suggested next actions',
+    emptyInstruction: 'Please enter what you want LinguaSub to do.',
+    noSubtitleRunError:
+      'Please import a video and complete transcription, or import an SRT subtitle file first.',
+    mockOutput:
+      'The Command Agent endpoint will be connected next. Future results will be generated from the current subtitles.',
+    examplePrompts: [
+      {
+        title: 'Create a presentation script',
+        prompt:
+          'Summarize the current video and turn it into a clear presentation script suitable for speaking.',
+      },
+      {
+        title: 'Turn subtitles into study notes',
+        prompt:
+          'Turn the current subtitles into study notes with key points, keyword explanations, and review questions.',
+      },
+      {
+        title: 'Generate a social media post',
+        prompt:
+          'Create a social media introduction post from the current video with an attractive title, natural body text, and tags.',
+      },
+      {
+        title: 'Condense into a 3-minute speech',
+        prompt:
+          'Condense the current video into a natural 3-minute speech script suitable for reading aloud.',
+      },
+    ],
+    mockSuggestedActions: [
+      'Connect /agent/command',
+      'Generate a Word document',
+      'Keep refining the output style',
+    ],
   },
   importPage: {
     sections: {

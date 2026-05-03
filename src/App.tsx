@@ -10,6 +10,7 @@
 } from 'react'
 
 import { ActionBar } from './components/ActionBar'
+import { CommandAgentWorkspace } from './components/CommandAgentWorkspace'
 import { ExportWorkspace } from './components/ExportWorkspace'
 import { ImportWorkspace } from './components/ImportWorkspace'
 import { SettingsWorkspace } from './components/SettingsWorkspace'
@@ -114,6 +115,7 @@ type WorkspaceKey =
   | 'videoSubtitle'
   | 'translation'
   | 'preview'
+  | 'aiWorkbench'
   | 'export'
   | 'settings'
 type MainWorkspaceKey = Exclude<WorkspaceKey, 'settings'>
@@ -223,6 +225,21 @@ function getCurrentVideoPath(
 
   if (projectState.currentFile?.mediaType === 'video') {
     return projectState.currentFile.path
+  }
+
+  return null
+}
+
+function getCurrentVideoName(
+  importResult: ImportResult | null,
+  projectState: ProjectState,
+): string | null {
+  if (importResult?.currentFile.mediaType === 'video') {
+    return importResult.currentFile.name
+  }
+
+  if (projectState.currentFile?.mediaType === 'video') {
+    return projectState.currentFile.name
   }
 
   return null
@@ -631,7 +648,7 @@ function getWorkspaceCopy(
 ): WorkspaceCopy {
   if (activeWorkspace === 'settings') {
     return {
-      current: 6,
+      current: 7,
       title: m.app.workspace.settings.title,
       description: m.app.workspace.settings.description,
     }
@@ -657,9 +674,17 @@ function getWorkspaceCopy(
     }
   }
 
-  if (activeWorkspace === 'export') {
+  if (activeWorkspace === 'aiWorkbench') {
     return {
       current: 5,
+      title: m.app.workspace.aiWorkbench.title,
+      description: m.app.workspace.aiWorkbench.description,
+    }
+  }
+
+  if (activeWorkspace === 'export') {
+    return {
+      current: 6,
       title: m.app.workspace.export.title,
       description: m.app.workspace.export.description,
     }
@@ -796,6 +821,36 @@ function buildHeaderMetrics(
         label: m.common.summary.outputMode,
         value: getOutputModeLabel(outputMode, m),
         hint: m.app.labels.previewOutputModeHint,
+      },
+    ]
+  }
+
+  if (activeWorkspace === 'aiWorkbench') {
+    const translatedCount = projectState.segments.filter((segment) =>
+      safeTrim(segment.translatedText),
+    ).length
+    const coverage =
+      projectState.segments.length > 0
+        ? Math.round((translatedCount / projectState.segments.length) * 100)
+        : 0
+    return [
+      {
+        label: m.aiWorkbench.subtitleCount,
+        value: String(projectState.segments.length),
+        hint:
+          projectState.segments.length > 0
+            ? m.aiWorkbench.contextDescription
+            : m.aiWorkbench.emptyDescription,
+      },
+      {
+        label: m.aiWorkbench.translatedCount,
+        value: `${translatedCount} / ${projectState.segments.length}`,
+        hint: m.aiWorkbench.translatedRate(coverage),
+      },
+      {
+        label: m.aiWorkbench.videoName,
+        value: getCurrentVideoName(importResult, projectState) ?? m.aiWorkbench.noVideo,
+        hint: getCurrentVideoPath(importResult, projectState) ?? m.common.misc.notSelected,
       },
     ]
   }
@@ -1083,6 +1138,24 @@ function buildSidebarStatus(
     }
   }
 
+  if (activeWorkspace === 'aiWorkbench') {
+    const translatedCount = projectState.segments.filter((segment) =>
+      safeTrim(segment.translatedText),
+    ).length
+    return {
+      label: getStatusLabel(projectState.status, m),
+      hint:
+        projectState.segments.length > 0
+          ? m.aiWorkbench.contextDescription
+          : m.aiWorkbench.emptyDescription,
+      points: [
+        `${m.aiWorkbench.subtitleCount}: ${projectState.segments.length}`,
+        `${m.aiWorkbench.translatedCount}: ${translatedCount}`,
+        m.aiWorkbench.commandInputComingSoon,
+      ],
+    }
+  }
+
   if (!importResult) {
     return {
       label: m.common.statuses.idle,
@@ -1165,6 +1238,8 @@ function buildSidebarItems(
       ? 'videoSubtitle'
       : activeWorkspace === 'export'
       ? 'export'
+      : activeWorkspace === 'aiWorkbench'
+      ? 'aiWorkbench'
       : activeWorkspace === 'preview'
         ? 'preview'
         : activeWorkspace === 'translation' &&
@@ -1200,6 +1275,8 @@ function buildSidebarItems(
           ? isBusy || !hasImport || videoSubtitleProject
           : key === 'preview' || key === 'export'
             ? isBusy || !hasSegments
+            : key === 'aiWorkbench'
+              ? isBusy
             : isBusy,
   }))
 }
@@ -1279,6 +1356,12 @@ function buildStatusHint(
     return m.app.hints.exportReady
   }
 
+  if (activeWorkspace === 'aiWorkbench') {
+    return projectState.segments.length > 0
+      ? m.aiWorkbench.contextDescription
+      : m.aiWorkbench.emptyDescription
+  }
+
   if (projectState.status === 'done') {
     if (isVideoSubtitleImportResult(importResult)) {
       if (outputMode === 'bilingual') {
@@ -1352,6 +1435,7 @@ function isWorkspaceKey(value: string): value is WorkspaceKey {
     value === 'videoSubtitle' ||
     value === 'translation' ||
     value === 'preview' ||
+    value === 'aiWorkbench' ||
     value === 'export' ||
     value === 'settings'
   )
@@ -3411,7 +3495,7 @@ function App() {
       <main className="workspace">
         <StepHeader
           current={workspaceCopy.current}
-          total={6}
+          total={7}
           title={workspaceCopy.title}
           description={workspaceCopy.description}
           statusLabel={statusLabel}
@@ -3616,6 +3700,17 @@ function App() {
             />
           ) : null}
 
+          {resolvedWorkspace === 'aiWorkbench' ? (
+            <CommandAgentWorkspace
+              segments={projectState.segments}
+              videoName={getCurrentVideoName(importResult, projectState)}
+              videoPath={getCurrentVideoPath(importResult, projectState)}
+              sourceLanguage={projectState.segments[0]?.sourceLanguage}
+              targetLanguage={projectState.segments[0]?.targetLanguage}
+              bilingualMode={selectedOutputMode}
+            />
+          ) : null}
+
           {resolvedWorkspace === 'export' ? (
             <ExportWorkspace
               importResult={importResult}
@@ -3716,7 +3811,8 @@ function App() {
 
         {resolvedWorkspace !== 'videoSubtitle' &&
         resolvedWorkspace !== 'import' &&
-        resolvedWorkspace !== 'export' ? (
+        resolvedWorkspace !== 'export' &&
+        resolvedWorkspace !== 'aiWorkbench' ? (
           <ActionBar
             previousLabel={m.common.buttons.previousStep}
             secondaryLabel={secondaryLabel}

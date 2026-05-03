@@ -4,6 +4,7 @@ export type SidebarItemKey =
   | 'recognition'
   | 'translation'
   | 'preview'
+  | 'aiWorkbench'
   | 'export'
   | 'settings'
 
@@ -33,6 +34,7 @@ export const sidebarItemKeys: SidebarItemKey[] = [
   'recognition',
   'translation',
   'preview',
+  'aiWorkbench',
   'export',
   'settings',
 ]
