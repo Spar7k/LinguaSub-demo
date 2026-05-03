@@ -2306,6 +2306,38 @@ ol {
   overflow-wrap: anywhere;
 }
 
+.ai-workbench-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.ai-workbench-content-section {
+  min-width: 0;
+}
+
+.ai-workbench-content-heading {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.ai-workbench-result-grid .ai-workbench-content-paragraph {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.ai-workbench-result-grid .ai-workbench-content-bold {
+  display: inline;
+  margin-top: 0;
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
 .ai-workbench-history-card {
   display: flex;
   min-width: 0;

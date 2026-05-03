@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { useI18n } from '../i18n/useI18n'
 import { runCommandAgent } from '../services/commandAgentService'
@@ -91,6 +92,125 @@ function getRunErrorHint(message: string, copy: AiWorkbenchCopy): string {
   }
 
   return copy.errorHints.default
+}
+
+type AgentContentBlock =
+  | {
+      type: 'heading'
+      text: string
+    }
+  | {
+      type: 'paragraph'
+      lines: string[]
+    }
+
+function renderInlineContent(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  const boldPattern = /\*\*([^*]+?)\*\*/g
+  let cursor = 0
+  let match = boldPattern.exec(text)
+
+  while (match) {
+    const matchIndex = match.index
+
+    if (matchIndex > cursor) {
+      nodes.push(text.slice(cursor, matchIndex))
+    }
+
+    nodes.push(
+      <strong
+        className="ai-workbench-content-bold"
+        key={`${keyPrefix}-bold-${matchIndex}`}
+      >
+        {match[1]}
+      </strong>,
+    )
+
+    cursor = matchIndex + match[0].length
+    match = boldPattern.exec(text)
+  }
+
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor))
+  }
+
+  return nodes.length > 0 ? nodes : [text]
+}
+
+function renderAgentContent(text: string) {
+  const blocks: AgentContentBlock[] = []
+  let paragraphLines: string[] = []
+
+  function flushParagraph() {
+    if (paragraphLines.length === 0) {
+      return
+    }
+
+    blocks.push({
+      type: 'paragraph',
+      lines: paragraphLines,
+    })
+    paragraphLines = []
+  }
+
+  text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .forEach((line) => {
+      const trimmedLine = line.trim()
+
+      if (!trimmedLine) {
+        flushParagraph()
+        return
+      }
+
+      if (trimmedLine.startsWith('##')) {
+        flushParagraph()
+        const headingText = trimmedLine.replace(/^##+\s*/, '').trim()
+
+        if (headingText) {
+          blocks.push({
+            type: 'heading',
+            text: headingText,
+          })
+        }
+        return
+      }
+
+      paragraphLines.push(trimmedLine)
+    })
+
+  flushParagraph()
+
+  if (blocks.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="ai-workbench-content">
+      {blocks.map((block, blockIndex) => (
+        <div className="ai-workbench-content-section" key={blockIndex}>
+          {block.type === 'heading' ? (
+            <h4 className="ai-workbench-content-heading">
+              {renderInlineContent(block.text, `heading-${blockIndex}`)}
+            </h4>
+          ) : (
+            <p className="ai-workbench-content-paragraph">
+              {block.lines.map((line, lineIndex) => (
+                <Fragment key={`${blockIndex}-${lineIndex}`}>
+                  {lineIndex > 0 ? <br /> : null}
+                  {renderInlineContent(
+                    line,
+                    `paragraph-${blockIndex}-${lineIndex}`,
+                  )}
+                </Fragment>
+              ))}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function CommandAgentWorkspace({
@@ -398,7 +518,7 @@ export function CommandAgentWorkspace({
                   </section>
                   <section>
                     <span className="field-label">{copy.outputTitle}</span>
-                    <p>{activeItem.result.content}</p>
+                    {renderAgentContent(activeItem.result.content)}
                   </section>
                   <section>
                     <span className="field-label">{copy.suggestedActionsTitle}</span>
