@@ -271,6 +271,172 @@ def _build_transcript_document(segments: list[SubtitleSegment]) -> bytes:
     return _package_document(document)
 
 
+def _safe_text(value: object) -> str:
+    if value is None:
+        return ""
+
+    return str(value).strip()
+
+
+def _safe_int(value: object) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, (int, float)) and math.isfinite(value):
+        return int(round(float(value)))
+    return 0
+
+
+def _safe_list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
+def _normalize_content_summary(summary: dict[str, object]) -> dict[str, object]:
+    one_sentence_summary = _safe_text(summary.get("oneSentenceSummary"))
+    chapters: list[dict[str, object]] = []
+    for item in _safe_list(summary.get("chapters")):
+        if not isinstance(item, dict):
+            continue
+        chapters.append(
+            {
+                "start": _safe_int(item.get("start")),
+                "end": _safe_int(item.get("end")),
+                "title": _safe_text(item.get("title")),
+                "summary": _safe_text(item.get("summary")),
+            }
+        )
+
+    keywords: list[dict[str, str]] = []
+    for item in _safe_list(summary.get("keywords")):
+        if not isinstance(item, dict):
+            continue
+        keywords.append(
+            {
+                "term": _safe_text(item.get("term")),
+                "translation": _safe_text(item.get("translation")),
+                "explanation": _safe_text(item.get("explanation")),
+            }
+        )
+
+    study_notes = _safe_text(summary.get("studyNotes"))
+    has_content = bool(
+        one_sentence_summary
+        or study_notes
+        or any(
+            chapter["title"] or chapter["summary"]
+            for chapter in chapters
+        )
+        or any(
+            keyword["term"] or keyword["translation"] or keyword["explanation"]
+            for keyword in keywords
+        )
+    )
+    if not has_content:
+        raise WordExportError("Content summary is empty. Generate a content summary before exporting.")
+
+    return {
+        "oneSentenceSummary": one_sentence_summary,
+        "chapters": chapters,
+        "keywords": keywords,
+        "studyNotes": study_notes,
+    }
+
+
+def _append_content_summary_section(
+    body: ET.Element,
+    title: str,
+    fallback_text: str,
+    content: str,
+) -> None:
+    _append_paragraph(body, title, bold=True, spacing_after=80)
+    _append_paragraph(
+        body,
+        content if content else fallback_text,
+        spacing_after=180,
+    )
+
+
+def _build_content_summary_document(summary: dict[str, object]) -> bytes:
+    normalized_summary = _normalize_content_summary(summary)
+    document = ET.Element(_w("document"))
+    body = ET.SubElement(document, _w("body"))
+
+    _append_paragraph(body, "Content Summary", bold=True, spacing_after=140)
+    _append_labeled_paragraph(
+        body,
+        "Generated at",
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        spacing_after=200,
+    )
+    _append_content_summary_section(
+        body,
+        "One-sentence Summary",
+        "No one-sentence summary returned.",
+        str(normalized_summary["oneSentenceSummary"]),
+    )
+
+    _append_paragraph(body, "Chapter Summaries", bold=True, spacing_after=80)
+    chapters = normalized_summary["chapters"]
+    if isinstance(chapters, list) and chapters:
+        for index, chapter in enumerate(chapters, start=1):
+            if not isinstance(chapter, dict):
+                continue
+            time_range = (
+                f"{_format_word_timestamp(chapter.get('start'))} -> "
+                f"{_format_word_timestamp(chapter.get('end'))}"
+            )
+            chapter_title = _safe_text(chapter.get("title")) or f"Chapter {index}"
+            _append_paragraph(
+                body,
+                f"{index}. {chapter_title}",
+                bold=True,
+                spacing_after=40,
+            )
+            _append_labeled_paragraph(body, "Time", time_range, spacing_after=40)
+            _append_labeled_paragraph(
+                body,
+                "Summary",
+                _safe_text(chapter.get("summary")) or "No chapter summary returned.",
+                spacing_after=150,
+            )
+    else:
+        _append_paragraph(body, "No chapter summaries returned.", spacing_after=180)
+
+    _append_paragraph(body, "Keywords / Terms", bold=True, spacing_after=80)
+    keywords = normalized_summary["keywords"]
+    if isinstance(keywords, list) and keywords:
+        for index, keyword in enumerate(keywords, start=1):
+            if not isinstance(keyword, dict):
+                continue
+            term = _safe_text(keyword.get("term")) or f"Keyword {index}"
+            translation = _safe_text(keyword.get("translation")) or "--"
+            explanation = _safe_text(keyword.get("explanation")) or "--"
+            _append_paragraph(body, f"{index}. {term}", bold=True, spacing_after=40)
+            _append_labeled_paragraph(
+                body,
+                "Translation",
+                translation,
+                spacing_after=40,
+            )
+            _append_labeled_paragraph(
+                body,
+                "Explanation",
+                explanation,
+                spacing_after=150,
+            )
+    else:
+        _append_paragraph(body, "No keywords returned.", spacing_after=180)
+
+    _append_content_summary_section(
+        body,
+        "Study Notes",
+        "No study notes returned.",
+        str(normalized_summary["studyNotes"]),
+    )
+
+    _append_section_properties(body)
+    return _package_document(document)
+
+
 def _append_section_properties(body: ET.Element) -> None:
     section_properties = ET.SubElement(body, _w("sectPr"))
     page_size = ET.SubElement(section_properties, _w("pgSz"))
@@ -428,3 +594,10 @@ def generate_word_document(
         return _build_transcript_document(segments)
 
     raise WordExportError(f"Unsupported Word export mode '{mode}'.")
+
+
+def generate_content_summary_word_document(summary: dict[str, object]) -> bytes:
+    if not isinstance(summary, dict):
+        raise WordExportError("Content summary is empty. Generate a content summary before exporting.")
+
+    return _build_content_summary_document(summary)

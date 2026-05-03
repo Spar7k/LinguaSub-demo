@@ -1,5 +1,11 @@
 import type { SubtitleSegment } from '../types/models'
-import type { ExportFormat, ExportResult, WordExportMode } from '../types/export'
+import type {
+  ContentSummaryWordExportRequest,
+  ContentSummaryWordExportResult,
+  ExportFormat,
+  ExportResult,
+  WordExportMode,
+} from '../types/export'
 import { requestJson } from './backendClient'
 
 type ExportSubtitlesRequest = {
@@ -26,6 +32,21 @@ export async function exportSubtitles({
       format,
       bilingual,
       wordMode,
+      sourceFilePath,
+      fileName,
+    }),
+  })
+}
+
+export async function exportContentSummaryWord({
+  summary,
+  sourceFilePath = null,
+  fileName = null,
+}: ContentSummaryWordExportRequest): Promise<ContentSummaryWordExportResult> {
+  return requestJson<ContentSummaryWordExportResult>('/export/content-summary-word', {
+    method: 'POST',
+    body: JSON.stringify({
+      summary,
       sourceFilePath,
       fileName,
     }),

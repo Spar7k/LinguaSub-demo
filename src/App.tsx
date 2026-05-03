@@ -48,7 +48,10 @@ import {
   startSpeechModelDownload,
   type SpeechModelDownloadRequest,
 } from './services/environmentService'
-import { exportSubtitles } from './services/exportService'
+import {
+  exportContentSummaryWord,
+  exportSubtitles,
+} from './services/exportService'
 import { pickVideoSavePath } from './services/saveFilePickerService'
 import { loadTaskHistory, upsertTaskHistoryRecord } from './services/taskHistoryService'
 import { parseSrt } from './services/srtService'
@@ -542,6 +545,10 @@ function getExportStatusPoint(
     return `${m.common.summary.exportFormat}: ${getExportFormatLabel(exportFormat, m)}`
   }
 
+  if (exportFormat === 'content_summary_word') {
+    return `${m.common.summary.exportFormat}: ${getExportFormatLabel(exportFormat, m)}`
+  }
+
   return `${m.common.summary.outputMode}: ${getOutputModeLabel(outputMode, m)}`
 }
 
@@ -558,6 +565,10 @@ function getTaskOutputFormat(
     return 'recognition_text'
   }
 
+  if (exportFormat === 'content_summary_word') {
+    return 'content_summary_word'
+  }
+
   return outputMode === 'bilingual' ? 'srt:bilingual' : 'srt:single'
 }
 
@@ -570,6 +581,10 @@ function getPrimaryExportActionLabel(
   }
 
   if (exportFormat === 'recognition_text') {
+    return getExportFormatLabel(exportFormat, m)
+  }
+
+  if (exportFormat === 'content_summary_word') {
     return getExportFormatLabel(exportFormat, m)
   }
 
@@ -2672,8 +2687,146 @@ function App() {
     }
   }
 
+  async function handleExportContentSummaryWord() {
+    const storedContentSummary = agentState.contentSummary
+
+    if (!storedContentSummary) {
+      const message = m.app.errors.noContentSummaryToExport
+      setProcessError(message)
+      return
+    }
+
+    if (isContentSummaryAgentStale) {
+      const message = m.app.errors.staleContentSummaryToExport
+      setProcessError(message)
+      return
+    }
+
+    setIsWorking(true)
+    setProcessError(null)
+
+    if (!currentTaskRef.current && importResult) {
+      await persistTaskRecord({
+        ...createTaskRecordFromImport(importResult),
+        projectSnapshot: cloneProjectState(projectState),
+        subtitleSummary: buildSubtitleSummary(projectState.segments),
+        status: 'editing',
+      })
+    }
+
+    startTransition(() => {
+      setProjectState((current) => ({
+        ...current,
+        status: 'exporting',
+        error: null,
+      }))
+    })
+
+    try {
+      await patchCurrentTask(
+        {
+          status: 'exporting',
+          errorMessage: null,
+          outputFormats: Array.from(
+            new Set([
+              ...(currentTaskRef.current?.outputFormats ?? []),
+              'content_summary_word',
+            ]),
+          ),
+        },
+        [
+          buildTaskLogEntry(
+            'info',
+            '正在导出内容总结 Word。',
+            `文件名：${safeTrim(exportFileName) || '自动命名'}`,
+          ),
+        ],
+      )
+
+      const result = await exportContentSummaryWord({
+        summary: storedContentSummary.result,
+        sourceFilePath:
+          importResult?.currentFile.path ?? projectState.currentFile?.path ?? null,
+        fileName: safeTrim(exportFileName) || null,
+      })
+
+      startTransition(() => {
+        setExportResult(result)
+        setProjectState((current) => ({
+          ...current,
+          status: 'done',
+          error: null,
+        }))
+      })
+
+      await patchCurrentTask(
+        {
+          status: 'done',
+          errorMessage: null,
+          exportPaths: Array.from(
+            new Set([result.path, ...(currentTaskRef.current?.exportPaths ?? [])]),
+          ),
+          outputFormats: Array.from(
+            new Set([
+              ...(currentTaskRef.current?.outputFormats ?? []),
+              'content_summary_word',
+            ]),
+          ),
+          projectSnapshot: {
+            currentFile: projectState.currentFile,
+            segments: cloneSegments(projectState.segments),
+            status: 'done',
+            error: null,
+          },
+        },
+        [
+          buildTaskLogEntry(
+            'info',
+            result.conflictResolved
+              ? '内容总结 Word 导出完成。检测到同名文件后，已自动追加序号保存。'
+              : '内容总结 Word 导出完成。',
+            `保存路径：${result.path}${
+              result.sanitizedFileName ? '\n文件名中的非法字符已自动清洗。' : ''
+            }`,
+          ),
+        ],
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : m.app.errors.exportFailed
+      startTransition(() => {
+        setProcessError(message)
+        setProjectState((current) => ({
+          ...current,
+          status: 'error',
+          error: message,
+        }))
+      })
+
+      await patchCurrentTask(
+        {
+          status: 'error',
+          errorMessage: message,
+        },
+        [
+          buildTaskLogEntry(
+            'error',
+            '内容总结 Word 导出失败，可能是目标目录无写入权限，或文件正在被其他程序占用。',
+            message,
+          ),
+        ],
+      )
+    } finally {
+      setIsWorking(false)
+    }
+  }
+
   async function handleExport(formatOverride?: ExportFormat) {
     const requestedExportFormat = formatOverride ?? selectedExportFormat
+
+    if (requestedExportFormat === 'content_summary_word') {
+      await handleExportContentSummaryWord()
+      return
+    }
 
     if (projectState.segments.length === 0) {
       const message = m.app.errors.noSubtitleSegmentsToExport
@@ -3471,6 +3624,9 @@ function App() {
               isExporting={isWorking && projectState.status === 'exporting'}
               isVideoBurnExporting={isVideoBurnExporting}
               hasUnsavedChanges={hasUnsavedChanges}
+              contentSummaryResult={agentState.contentSummary?.result ?? null}
+              contentSummaryGeneratedAt={agentState.contentSummary?.generatedAt ?? null}
+              isContentSummaryStale={isContentSummaryAgentStale}
               onOpenExportFolder={() => {
                 void handleOpenLatestExportFolder()
               }}
@@ -3510,6 +3666,9 @@ function App() {
               }}
               onExportBurnedVideo={() => {
                 void handleBurnSubtitleVideoExport()
+              }}
+              onExportContentSummaryWord={() => {
+                void handleExportContentSummaryWord()
               }}
               onClearExportError={() => {
                 startTransition(() => {

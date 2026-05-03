@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import type { ExportFormat, ExportResult, WordExportMode } from '../types/export'
 import { useI18n } from '../i18n/useI18n'
+import type { ContentSummaryResult } from '../types/agent'
 import type { ImportResult } from '../types/import'
 import type { OutputMode, ProjectState } from '../types/models'
 import type {
@@ -11,7 +12,12 @@ import type {
 import { safeTrim } from '../utils/config'
 import { SectionCard } from './SectionCard'
 
-type ExportTarget = 'subtitle' | 'recognitionText' | 'word' | 'video'
+type ExportTarget =
+  | 'subtitle'
+  | 'recognitionText'
+  | 'word'
+  | 'contentSummaryWord'
+  | 'video'
 
 type ExportWorkspaceProps = {
   importResult: ImportResult | null
@@ -27,6 +33,9 @@ type ExportWorkspaceProps = {
   isExporting: boolean
   isVideoBurnExporting: boolean
   hasUnsavedChanges: boolean
+  contentSummaryResult: ContentSummaryResult | null
+  contentSummaryGeneratedAt: string | null
+  isContentSummaryStale: boolean
   onOpenExportFolder: () => void
   onOpenVideoBurnExportFolder: () => void
   onExportFormatChange: (format: ExportFormat) => void
@@ -36,6 +45,7 @@ type ExportWorkspaceProps = {
   onVideoBurnModeChange: (mode: VideoBurnExportMode) => void
   onExportSubtitles: (format: ExportFormat) => void
   onExportBurnedVideo: () => void
+  onExportContentSummaryWord: () => void
   onClearExportError: () => void
 }
 
@@ -62,6 +72,10 @@ function getDefaultFileName(
 
   if (exportFormat === 'recognition_text') {
     return `${stem}.recognition.txt`
+  }
+
+  if (exportFormat === 'content_summary_word') {
+    return `${stem}.content-summary.docx`
   }
 
   const suffix = outputMode === 'bilingual' ? 'bilingual' : 'single'
@@ -93,6 +107,10 @@ function getInitialExportTarget(exportFormat: ExportFormat): ExportTarget {
     return 'recognitionText'
   }
 
+  if (exportFormat === 'content_summary_word') {
+    return 'contentSummaryWord'
+  }
+
   return 'subtitle'
 }
 
@@ -105,10 +123,36 @@ function getExportTargetFormat(target: ExportTarget): ExportFormat {
     return 'recognition_text'
   }
 
+  if (target === 'contentSummaryWord') {
+    return 'content_summary_word'
+  }
+
   return 'srt'
 }
 
-const exportTargets: ExportTarget[] = ['subtitle', 'recognitionText', 'word', 'video']
+const exportTargets: ExportTarget[] = [
+  'subtitle',
+  'recognitionText',
+  'word',
+  'contentSummaryWord',
+  'video',
+]
+
+function formatGeneratedAt(value: string | null, language: string): string | null {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  return new Intl.DateTimeFormat(language === 'zh' ? 'zh-CN' : 'en', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date)
+}
 
 export function ExportWorkspace({
   importResult,
@@ -124,6 +168,9 @@ export function ExportWorkspace({
   isExporting,
   isVideoBurnExporting,
   hasUnsavedChanges,
+  contentSummaryResult,
+  contentSummaryGeneratedAt,
+  isContentSummaryStale,
   onOpenExportFolder,
   onOpenVideoBurnExportFolder,
   onExportFormatChange,
@@ -133,6 +180,7 @@ export function ExportWorkspace({
   onVideoBurnModeChange,
   onExportSubtitles,
   onExportBurnedVideo,
+  onExportContentSummaryWord,
   onClearExportError,
 }: ExportWorkspaceProps) {
   const { m, language } = useI18n()
@@ -186,8 +234,19 @@ export function ExportWorkspace({
   const canExportFile = projectState.segments.length > 0 && !isBusy
   const canExportRecognitionText =
     projectState.segments.length > 0 && hasRecognitionText && !isBusy
+  const canExportContentSummaryWord =
+    Boolean(contentSummaryResult) && !isContentSummaryStale && !isBusy
   const canExportBurnedVideo =
     Boolean(currentVideoPath) && projectState.segments.length > 0 && !isBusy
+  const contentSummaryGeneratedAtLabel = formatGeneratedAt(
+    contentSummaryGeneratedAt,
+    language,
+  )
+  const contentSummaryStatus = !contentSummaryResult
+    ? copy.contentSummaryStatus.missing
+    : isContentSummaryStale
+      ? copy.contentSummaryStatus.stale
+      : copy.contentSummaryStatus.ready
   const activeFormat = getExportTargetFormat(exportTarget)
   const effectiveFileName =
     safeTrim(exportFileName) ||
@@ -205,7 +264,9 @@ export function ExportWorkspace({
       ? m.exportPage.fileFormatDescriptions.word
       : exportTarget === 'recognitionText'
         ? m.exportPage.fileFormatDescriptions.recognition_text
-      : m.exportPage.fileFormatDescriptions.srt
+        : exportTarget === 'contentSummaryWord'
+          ? m.exportPage.fileFormatDescriptions.content_summary_word
+          : m.exportPage.fileFormatDescriptions.srt
   const wordModeDescription =
     wordExportMode === 'transcript'
       ? m.exportPage.wordModeDescriptions.transcript
@@ -215,16 +276,20 @@ export function ExportWorkspace({
     ((exportTarget === 'subtitle' && exportResult.format === 'srt') ||
       (exportTarget === 'recognitionText' &&
         exportResult.format === 'recognition_text') ||
-      (exportTarget === 'word' && exportResult.format === 'word'))
+      (exportTarget === 'word' && exportResult.format === 'word') ||
+      (exportTarget === 'contentSummaryWord' &&
+        exportResult.format === 'content_summary_word'))
       ? exportResult
       : null
   const activeVideoResult = exportTarget === 'video' ? videoBurnExportResult : null
   const primaryDisabled =
     exportTarget === 'video'
       ? !canExportBurnedVideo
-      : exportTarget === 'recognitionText'
-        ? !canExportRecognitionText
-        : !canExportFile
+      : exportTarget === 'contentSummaryWord'
+        ? !canExportContentSummaryWord
+        : exportTarget === 'recognitionText'
+          ? !canExportRecognitionText
+          : !canExportFile
   const primaryLabel =
     exportTarget === 'video'
       ? isVideoBurnExporting
@@ -232,11 +297,13 @@ export function ExportWorkspace({
         : copy.buttons.exportVideo
       : isExporting
         ? copy.buttons.exporting
-        : exportTarget === 'word'
-          ? copy.buttons.exportWord
-          : exportTarget === 'recognitionText'
-            ? copy.buttons.exportRecognitionText
-          : copy.buttons.exportSubtitle
+        : exportTarget === 'contentSummaryWord'
+          ? copy.buttons.exportContentSummaryWord
+          : exportTarget === 'word'
+            ? copy.buttons.exportWord
+            : exportTarget === 'recognitionText'
+              ? copy.buttons.exportRecognitionText
+              : copy.buttons.exportSubtitle
 
   function selectExportTarget(nextTarget: ExportTarget) {
     setExportTarget(nextTarget)
@@ -250,11 +317,18 @@ export function ExportWorkspace({
     if (nextTarget === 'word') {
       onExportFormatChange('word')
     }
+    if (nextTarget === 'contentSummaryWord') {
+      onExportFormatChange('content_summary_word')
+    }
   }
 
   function handlePrimaryExport() {
     if (exportTarget === 'video') {
       onExportBurnedVideo()
+      return
+    }
+    if (exportTarget === 'contentSummaryWord') {
+      onExportContentSummaryWord()
       return
     }
     onExportSubtitles(getExportTargetFormat(exportTarget))
@@ -326,7 +400,10 @@ export function ExportWorkspace({
 
           <label
             className={`field-block export-file-name-field ${
-              exportTarget === 'recognitionText' ? 'export-file-name-field--wide' : ''
+              exportTarget === 'recognitionText' ||
+              exportTarget === 'contentSummaryWord'
+                ? 'export-file-name-field--wide'
+                : ''
             }`.trim()}
           >
             <span className="field-label">{copy.fileNameLabel}</span>
@@ -425,11 +502,41 @@ export function ExportWorkspace({
         </span>
       </div>
 
+      {exportTarget === 'contentSummaryWord' ? (
+        <div
+          className={`export-content-summary-status export-content-summary-status--${contentSummaryStatus.tone}`}
+        >
+          <div>
+            <span className="field-label">{copy.contentSummaryStatusLabel}</span>
+            <strong>{contentSummaryStatus.title}</strong>
+            <p>{contentSummaryStatus.description}</p>
+          </div>
+          <div className="export-content-summary-status__stats">
+            <span>
+              {copy.contentSummaryChaptersLabel}:{' '}
+              <strong>{contentSummaryResult?.chapters.length ?? 0}</strong>
+            </span>
+            <span>
+              {copy.contentSummaryKeywordsLabel}:{' '}
+              <strong>{contentSummaryResult?.keywords.length ?? 0}</strong>
+            </span>
+            {contentSummaryGeneratedAtLabel ? (
+              <span>
+                {copy.contentSummaryGeneratedAtLabel}:{' '}
+                <strong>{contentSummaryGeneratedAtLabel}</strong>
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {projectState.segments.length === 0 ? (
         <div className="error-banner" role="alert">
           <strong>{m.common.misc.noSubtitleContent}</strong>
           <p>
-            {exportTarget === 'recognitionText'
+            {exportTarget === 'contentSummaryWord'
+              ? copy.contentSummaryStatus.missing.description
+              : exportTarget === 'recognitionText'
               ? m.app.errors.noRecognitionTextToExport
               : exportTarget === 'video'
                 ? copy.noSegments
@@ -470,7 +577,9 @@ export function ExportWorkspace({
         </div>
       ) : null}
 
-      {invalidTimelineCount > 0 && exportTarget !== 'video' ? (
+      {invalidTimelineCount > 0 &&
+      exportTarget !== 'video' &&
+      exportTarget !== 'contentSummaryWord' ? (
         <div
           className={exportTarget === 'word' ? 'warning-banner' : 'error-banner'}
           role="alert"

@@ -22,7 +22,11 @@ from .agent_service import (
     analyze_subtitle_quality,
     summarize_subtitle_content,
 )
-from .export_service import ExportServiceError, export_subtitles
+from .export_service import (
+    ExportServiceError,
+    export_content_summary_word,
+    export_subtitles,
+)
 from .srt_service import (
     SrtServiceError,
     generate_srt,
@@ -191,6 +195,10 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
 
             if self.path == "/export":
                 self._handle_export()
+                return
+
+            if self.path == "/export/content-summary-word":
+                self._handle_content_summary_word_export()
                 return
 
             if self.path == "/agent/subtitle-quality":
@@ -635,6 +643,31 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
                 file_name=file_name,
             )
         except (ExportServiceError, SrtServiceError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        except (KeyError, TypeError, ValueError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+
+        self._send_json(
+            {
+                **result.to_dict(),
+                "status": "done",
+            }
+        )
+
+    def _handle_content_summary_word_export(self) -> None:
+        try:
+            payload = self._read_json_body()
+            summary = payload.get("summary")
+            if not isinstance(summary, dict):
+                raise ValueError("Content summary is empty. Generate a content summary before exporting.")
+            result = export_content_summary_word(
+                summary=summary,
+                source_file_path=payload.get("sourceFilePath"),
+                file_name=payload.get("fileName"),
+            )
+        except ExportServiceError as exc:
             self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             return
         except (KeyError, TypeError, ValueError) as exc:

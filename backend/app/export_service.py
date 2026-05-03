@@ -17,11 +17,13 @@ from .word_export_service import (
     WORD_EXPORT_MODE_BILINGUAL_TABLE,
     WORD_EXPORT_MODE_TRANSCRIPT,
     WordExportError,
+    generate_content_summary_word_document,
     generate_word_document,
     validate_word_export_mode,
 )
 
-ExportFormat = Literal["srt", "word", "recognition_text"]
+SubtitleExportFormat = Literal["srt", "word", "recognition_text"]
+ExportFormat = Literal["srt", "word", "recognition_text", "content_summary_word"]
 WordExportMode = Literal["bilingualTable", "transcript"]
 
 DEFAULT_EXPORT_STEM = "linguasub-subtitles"
@@ -34,6 +36,7 @@ EXPORT_EXTENSION_MAP: dict[ExportFormat, str] = {
     "srt": ".srt",
     "word": ".docx",
     "recognition_text": ".txt",
+    "content_summary_word": ".docx",
 }
 
 
@@ -70,7 +73,7 @@ class ExportResult(JsonModel):
     sanitizedFileName: bool = False
 
 
-def _normalize_export_format(export_format: str | None) -> ExportFormat:
+def _normalize_export_format(export_format: str | None) -> SubtitleExportFormat:
     normalized = (export_format or "srt").strip().lower()
     if normalized in SUPPORTED_EXPORT_FORMATS:
         return normalized  # type: ignore[return-value]
@@ -155,6 +158,9 @@ def _build_default_file_name(
 
     if export_format == "recognition_text":
         return f"{stem}.recognition.txt"
+
+    if export_format == "content_summary_word":
+        return f"{stem}.content-summary.docx"
 
     suffix = "bilingual" if bilingual else "single"
     return f"{stem}.{suffix}.srt"
@@ -419,6 +425,54 @@ def export_recognition_text(
     )
 
 
+def export_content_summary_word(
+    summary: dict[str, object],
+    *,
+    source_file_path: str | Path | None = None,
+    file_name: str | None = None,
+) -> ExportResult:
+    export_path, conflict_resolved, sanitized_file_name = _resolve_export_target(
+        source_file_path=source_file_path,
+        export_format="content_summary_word",
+        bilingual=False,
+        word_mode=WORD_EXPORT_MODE_BILINGUAL_TABLE,
+        file_name=file_name,
+    )
+
+    try:
+        content = generate_content_summary_word_document(summary)
+        export_path.write_bytes(content)
+    except WordExportError as exc:
+        raise ExportServiceError(str(exc)) from exc
+    except OSError as exc:
+        raw_error = exc.strerror or str(exc)
+        lowered = raw_error.lower()
+        if getattr(exc, "winerror", None) == 32:
+            raise ExportWriteError(
+                f"Could not write export file '{export_path.name}'. The file is currently open in another program. Close the file and try again."
+            ) from exc
+        if getattr(exc, "winerror", None) == 5 or "permission denied" in lowered:
+            raise ExportWriteError(
+                f"Could not write export file '{export_path.name}'. LinguaSub does not have permission to write to the target folder."
+            ) from exc
+        raise ExportWriteError(
+            f"Could not write export file '{export_path.name}'. {raw_error}"
+        ) from exc
+
+    chapters = summary.get("chapters") if isinstance(summary, dict) else None
+    return ExportResult(
+        path=str(export_path),
+        directory=str(export_path.parent),
+        fileName=export_path.name,
+        format="content_summary_word",
+        bilingual=False,
+        wordMode=None,
+        count=len(chapters) if isinstance(chapters, list) else 0,
+        conflictResolved=conflict_resolved,
+        sanitizedFileName=sanitized_file_name,
+    )
+
+
 def exportSrt(
     segments: list[SubtitleSegment],
     *,
@@ -457,6 +511,19 @@ def exportRecognitionText(
 ) -> ExportResult:
     return export_recognition_text(
         segments=segments,
+        source_file_path=source_file_path,
+        file_name=file_name,
+    )
+
+
+def exportContentSummaryWord(
+    summary: dict[str, object],
+    *,
+    source_file_path: str | Path | None = None,
+    file_name: str | None = None,
+) -> ExportResult:
+    return export_content_summary_word(
+        summary=summary,
         source_file_path=source_file_path,
         file_name=file_name,
     )

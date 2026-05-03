@@ -284,6 +284,8 @@ const zhMessages = {
       missingUpdatedSegment: '翻译服务没有返回更新后的字幕片段。',
       noSubtitleSegmentsToExport: '当前没有可导出的字幕片段。',
       noRecognitionTextToExport: '暂无识别内容可导出，请先完成视频识别。',
+      noContentSummaryToExport: '请先在预览页生成内容总结。',
+      staleContentSummaryToExport: '字幕内容已变化，请重新生成内容总结后再导出。',
       exportFailed: '导出失败，请重试。',
       startupCheckFailed: '无法加载启动环境检查。',
       configLoadFailed: '无法加载翻译配置。',
@@ -620,6 +622,7 @@ const enMessages = {
       srt: 'SRT',
       word: 'Word',
       recognition_text: 'Recognition Text TXT',
+      content_summary_word: 'Content Summary Word',
     },
     transcriptionProviders: {
       openaiSpeech: 'Cloud transcription (Recommended)',
@@ -874,6 +877,10 @@ const enMessages = {
       noSubtitleSegmentsToExport: 'There are no subtitle segments to export.',
       noRecognitionTextToExport:
         'No recognition text available. Please transcribe a video first.',
+      noContentSummaryToExport:
+        'Please generate a content summary on the Preview page first.',
+      staleContentSummaryToExport:
+        'Subtitles have changed. Regenerate the content summary before exporting.',
       exportFailed: 'Export failed. Please try again.',
       startupCheckFailed: 'Could not load the startup environment check.',
       configLoadFailed: 'Could not load the translation config.',
@@ -1211,6 +1218,11 @@ const enMessages = {
           title: 'Word document',
           description: 'Generate a DOCX file for review, reading, or archiving.',
         },
+        contentSummaryWord: {
+          title: 'Content Summary Word',
+          description:
+            'Export the generated one-line summary, chapter summaries, keywords, and study notes.',
+        },
         video: {
           title: 'Subtitled video',
           description: 'Burn subtitles into the original video and save a new MP4.',
@@ -1224,6 +1236,28 @@ const enMessages = {
       noOriginalVideo:
         'No original video path is available. Generate subtitles from Video subtitle first.',
       noSegments: 'There are no subtitles yet. Finish recognition or translation first.',
+      contentSummaryStatusLabel: 'Content summary',
+      contentSummaryChaptersLabel: 'Chapters',
+      contentSummaryKeywordsLabel: 'Keywords',
+      contentSummaryGeneratedAtLabel: 'Generated',
+      contentSummaryStatus: {
+        ready: {
+          title: 'Content summary generated',
+          description: 'Ready to export as a Word document.',
+          tone: 'ready',
+        },
+        missing: {
+          title: 'Content summary not generated',
+          description: 'Please generate a content summary on the Preview page first.',
+          tone: 'missing',
+        },
+        stale: {
+          title: 'Content summary is out of date',
+          description:
+            'Subtitles have changed. Regenerate the content summary before exporting.',
+          tone: 'stale',
+        },
+      },
       successTitle: 'Export complete',
       failureTitle: 'Export failed',
       failureHint: 'Check the path, permissions, or settings, then try again.',
@@ -1242,6 +1276,7 @@ const enMessages = {
         exportSubtitle: 'Export subtitle file',
         exportRecognitionText: 'Export Recognition Text TXT',
         exportWord: 'Export Word document',
+        exportContentSummaryWord: 'Export Content Summary Word',
         exportVideo: 'Export subtitled video',
         exporting: 'Exporting...',
         exportingVideo: 'Generating subtitled video...',
@@ -1255,6 +1290,7 @@ const enMessages = {
       srt: 'SRT (.srt)',
       word: 'Word (.docx)',
       recognition_text: 'Recognition Text TXT (.txt)',
+      content_summary_word: 'Content Summary Word (.docx)',
     },
     fileFormatDescriptions: {
       srt:
@@ -1263,6 +1299,8 @@ const enMessages = {
         'Word export writes a real .docx document. Choose either a bilingual review table or a readable transcript layout.',
       recognition_text:
         'TXT export writes only the original recognition text with timestamps for ASR review.',
+      content_summary_word:
+        'Word export writes the Agent-generated one-line summary, chapter summaries, keywords, and study notes.',
     },
     bilingualDescription: 'Source text and translated text will be written on separate lines.',
     singleDescription: 'Translated text is used first. If it is empty, LinguaSub falls back to the source text.',
@@ -1425,6 +1463,7 @@ const zhMessagesNormalized = {
       srt: 'SRT',
       word: 'Word',
       recognition_text: '识别原文 TXT',
+      content_summary_word: '内容总结 Word',
     },
     wordExportModes: {
       bilingualTable: '双语表格',
@@ -1589,6 +1628,10 @@ const zhMessagesNormalized = {
           title: 'Word 文档',
           description: '生成适合审阅、阅读或归档的 DOCX 文件。',
         },
+        contentSummaryWord: {
+          title: '内容总结 Word',
+          description: '导出由 Agent 生成的一句话总结、章节总结、关键词和学习笔记。',
+        },
         video: {
           title: '带字幕视频',
           description: '把字幕烧录到原视频上，另存为新的 MP4。',
@@ -1601,6 +1644,27 @@ const zhMessagesNormalized = {
       videoSourceLabel: '原视频',
       noOriginalVideo: '当前没有原视频路径，请先从“视频字幕”生成字幕。',
       noSegments: '当前还没有字幕内容，请先完成识别或翻译。',
+      contentSummaryStatusLabel: '内容总结',
+      contentSummaryChaptersLabel: '章节',
+      contentSummaryKeywordsLabel: '关键词',
+      contentSummaryGeneratedAtLabel: '生成时间',
+      contentSummaryStatus: {
+        ready: {
+          title: '内容总结已生成',
+          description: '可以导出为 Word 文档。',
+          tone: 'ready',
+        },
+        missing: {
+          title: '尚未生成内容总结',
+          description: '请先在预览页生成内容总结。',
+          tone: 'missing',
+        },
+        stale: {
+          title: '内容总结已过期',
+          description: '字幕内容已变化，请重新生成内容总结后再导出。',
+          tone: 'stale',
+        },
+      },
       successTitle: '导出完成',
       failureTitle: '导出失败',
       failureHint: '请检查路径、权限或设置后重试。',
@@ -1619,6 +1683,7 @@ const zhMessagesNormalized = {
         exportSubtitle: '导出字幕文件',
         exportRecognitionText: '导出识别原文 TXT',
         exportWord: '导出 Word 文档',
+        exportContentSummaryWord: '导出内容总结 Word',
         exportVideo: '导出带字幕视频',
         exporting: '正在导出...',
         exportingVideo: '正在生成带字幕视频...',
@@ -1630,6 +1695,7 @@ const zhMessagesNormalized = {
       srt: 'SRT (.srt)',
       word: 'Word (.docx)',
       recognition_text: '识别原文 TXT (.txt)',
+      content_summary_word: '内容总结 Word (.docx)',
     },
     fileFormatDescriptions: {
       srt:
@@ -1638,6 +1704,8 @@ const zhMessagesNormalized = {
         'Word 导出会生成真正的 .docx 文件，可在双语表格和可读文稿两种布局之间切换。',
       recognition_text:
         'TXT 导出只写入带时间戳的识别原文，用于人工检查语音识别准确性。',
+      content_summary_word:
+        'Word 导出会写入 Agent 生成的一句话总结、章节总结、关键词和学习笔记。',
     },
     wordModeDescriptions: {
       bilingualTable:

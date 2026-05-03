@@ -10,6 +10,7 @@ from backend.app.export_service import (
     EmptySubtitleExportError,
     ExportServiceError,
     MissingTranslationExportError,
+    export_content_summary_word,
     export_srt,
     export_subtitles,
     export_word,
@@ -35,6 +36,8 @@ class ExportServiceTests(unittest.TestCase):
             "subtitle-file_bilingual.docx",
             "subtitle-file_transcript.docx",
             "custom-review.docx",
+            "custom-summary.docx",
+            "subtitle-file.content-summary.docx",
             "long-range.docx",
             "unicode-export.docx",
             "unsafe_name_.srt",
@@ -442,6 +445,78 @@ class ExportServiceTests(unittest.TestCase):
         self.assertIn("Translation: ", document_xml)
         self.assertIn("Let's test the transcript export.", document_xml)
         self.assertIn("我们来测试文稿导出。", document_xml)
+
+    def test_export_content_summary_word_writes_docx_with_auto_name(self) -> None:
+        result = export_content_summary_word(
+            {
+                "oneSentenceSummary": "This lesson introduces speech recognition.",
+                "chapters": [
+                    {
+                        "start": 0,
+                        "end": 80000,
+                        "title": "Background",
+                        "summary": "The speaker explains why ASR matters.",
+                    }
+                ],
+                "keywords": [
+                    {
+                        "term": "speech recognition",
+                        "translation": "语音识别",
+                        "explanation": "Converting spoken audio into text.",
+                    }
+                ],
+                "studyNotes": "Review the ASR workflow and common failure modes.",
+            },
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+        )
+
+        output_path = Path(result.path)
+        self.assertTrue(output_path.exists())
+        self.assertEqual(result.fileName, "subtitle-file.content-summary.docx")
+        self.assertEqual(result.format, "content_summary_word")
+        self.assertIsNone(result.wordMode)
+
+        with ZipFile(output_path) as archive:
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+
+        self.assertIn("Content Summary", document_xml)
+        self.assertIn("This lesson introduces speech recognition.", document_xml)
+        self.assertIn("Background", document_xml)
+        self.assertIn("The speaker explains why ASR matters.", document_xml)
+        self.assertIn("speech recognition", document_xml)
+        self.assertIn("语音识别", document_xml)
+        self.assertIn("Converting spoken audio into text.", document_xml)
+        self.assertIn("Review the ASR workflow and common failure modes.", document_xml)
+        self.assertIn("00:00:00.000 -&gt; 00:01:20.000", document_xml)
+
+    def test_export_content_summary_word_normalizes_custom_extension(self) -> None:
+        result = export_content_summary_word(
+            {
+                "oneSentenceSummary": "Short summary.",
+                "chapters": [],
+                "keywords": [],
+                "studyNotes": "",
+            },
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            file_name="custom-summary.srt",
+        )
+
+        output_path = Path(result.path)
+        self.assertTrue(output_path.exists())
+        self.assertEqual(result.fileName, "custom-summary.docx")
+        self.assertEqual(output_path.suffix, ".docx")
+
+    def test_export_content_summary_word_raises_when_summary_is_empty(self) -> None:
+        with self.assertRaisesRegex(ExportServiceError, "Content summary is empty"):
+            export_content_summary_word(
+                {
+                    "oneSentenceSummary": " ",
+                    "chapters": [],
+                    "keywords": [],
+                    "studyNotes": "\n",
+                },
+                source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            )
 
 
 if __name__ == "__main__":
