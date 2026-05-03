@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timezone
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -16,6 +17,8 @@ SUPPORTED_WORD_EXPORT_MODES = {
     WORD_EXPORT_MODE_BILINGUAL_TABLE,
     WORD_EXPORT_MODE_TRANSCRIPT,
 }
+COMMAND_AGENT_DEFAULT_TITLE = "Command Agent Result"
+BOLD_MARKER_PATTERN = re.compile(r"\*\*([^*\n]+?)\*\*")
 
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -142,6 +145,43 @@ def _append_labeled_paragraph(
 
     _append_run(paragraph, f"{label}: ", bold=True)
     _append_run(paragraph, _normalize_cell_text(text))
+    return paragraph
+
+
+def _append_rich_paragraph(
+    parent: ET.Element,
+    text: str,
+    *,
+    bold: bool = False,
+    spacing_after: int | None = None,
+) -> ET.Element:
+    paragraph = ET.SubElement(parent, _w("p"))
+    paragraph_properties = ET.SubElement(paragraph, _w("pPr"))
+    if spacing_after is not None:
+        spacing_element = ET.SubElement(paragraph_properties, _w("spacing"))
+        spacing_element.set(_w("after"), str(spacing_after))
+
+    if bold:
+        _append_run(paragraph, text, bold=True)
+        return paragraph
+
+    cursor = 0
+    has_runs = False
+    for match in BOLD_MARKER_PATTERN.finditer(text):
+        if match.start() > cursor:
+            _append_run(paragraph, text[cursor:match.start()])
+            has_runs = True
+        _append_run(paragraph, match.group(1), bold=True)
+        has_runs = True
+        cursor = match.end()
+
+    if cursor < len(text):
+        _append_run(paragraph, text[cursor:])
+        has_runs = True
+
+    if not has_runs:
+        _append_run(paragraph, text)
+
     return paragraph
 
 
@@ -339,6 +379,185 @@ def _normalize_content_summary(summary: dict[str, object]) -> dict[str, object]:
         "keywords": keywords,
         "studyNotes": study_notes,
     }
+
+
+def _normalize_suggested_actions(value: object) -> list[str]:
+    if isinstance(value, str):
+        action = _safe_text(value)
+        return [action] if action else []
+
+    if not isinstance(value, list):
+        return []
+
+    return [
+        action
+        for item in value
+        if isinstance(item, str) and (action := item.strip())
+    ]
+
+
+def _format_command_agent_coverage(value: object) -> str:
+    if isinstance(value, bool):
+        return ""
+    if not isinstance(value, (int, float)) or not math.isfinite(value):
+        return ""
+
+    normalized = float(value)
+    if 0 <= normalized <= 1:
+        normalized *= 100
+    return f"{int(round(normalized))}%"
+
+
+def _format_command_agent_language_direction(
+    context_summary: dict[str, object],
+) -> str:
+    source_language = _safe_text(context_summary.get("sourceLanguage"))
+    target_language = _safe_text(context_summary.get("targetLanguage"))
+
+    if source_language and target_language:
+        return f"{source_language} -> {target_language}"
+    if source_language:
+        return source_language
+    return target_language
+
+
+def _append_command_agent_metadata(
+    body: ET.Element,
+    *,
+    instruction: str,
+    context_summary: dict[str, object],
+    created_at: str,
+) -> None:
+    _append_paragraph(body, "Basic Information", bold=True, spacing_after=80)
+    _append_labeled_paragraph(
+        body,
+        "Instruction",
+        instruction or "Not provided.",
+        spacing_after=50,
+    )
+
+    metadata_rows = [
+        ("Video", _safe_text(context_summary.get("videoName"))),
+        ("Generated at", created_at),
+        ("Language", _format_command_agent_language_direction(context_summary)),
+    ]
+
+    subtitle_count = _safe_text(context_summary.get("subtitleCount"))
+    if subtitle_count:
+        metadata_rows.append(("Subtitle count", subtitle_count))
+
+    translated_count = _safe_text(context_summary.get("translatedCount"))
+    coverage = _format_command_agent_coverage(
+        context_summary.get("translationCoverage")
+    )
+    if translated_count and coverage:
+        metadata_rows.append(("Translated count", f"{translated_count} / {coverage}"))
+    elif translated_count:
+        metadata_rows.append(("Translated count", translated_count))
+    elif coverage:
+        metadata_rows.append(("Translation coverage", coverage))
+
+    for label, value in metadata_rows:
+        if value:
+            _append_labeled_paragraph(body, label, value, spacing_after=50)
+
+    _append_paragraph(body, "", spacing_after=120)
+
+
+def _iter_markdownish_content_blocks(content: str) -> list[tuple[str, str]]:
+    blocks: list[tuple[str, str]] = []
+    paragraph_lines: list[str] = []
+
+    def flush_paragraph() -> None:
+        if paragraph_lines:
+            blocks.append(("paragraph", "\n".join(paragraph_lines)))
+            paragraph_lines.clear()
+
+    for raw_line in content.replace("\r\n", "\n").split("\n"):
+        line = raw_line.strip()
+        if not line:
+            flush_paragraph()
+            continue
+
+        if line.startswith("##"):
+            flush_paragraph()
+            heading = line.lstrip("#").strip()
+            if heading:
+                blocks.append(("heading", heading))
+            continue
+
+        paragraph_lines.append(line)
+
+    flush_paragraph()
+    return blocks
+
+
+def _append_command_agent_content(body: ET.Element, content: str) -> None:
+    blocks = _iter_markdownish_content_blocks(content)
+    if not blocks:
+        raise WordExportError("Command Agent result content is empty.")
+
+    for block_type, text in blocks:
+        if block_type == "heading":
+            _append_rich_paragraph(body, text, bold=True, spacing_after=70)
+        else:
+            for index, line in enumerate(text.splitlines()):
+                _append_rich_paragraph(
+                    body,
+                    line,
+                    spacing_after=120 if index == len(text.splitlines()) - 1 else 50,
+                )
+
+
+def _build_command_agent_document(
+    *,
+    instruction: str,
+    result: dict[str, object],
+    context_summary: dict[str, object],
+    created_at: str,
+) -> bytes:
+    title = _safe_text(result.get("title")) or COMMAND_AGENT_DEFAULT_TITLE
+    summary = _safe_text(result.get("summary"))
+    content = _safe_text(result.get("content"))
+    if not content:
+        raise WordExportError("Command Agent result content is empty.")
+
+    suggested_actions = _normalize_suggested_actions(result.get("suggestedActions"))
+
+    document = ET.Element(_w("document"))
+    body = ET.SubElement(document, _w("body"))
+
+    _append_paragraph(body, title, bold=True, spacing_after=140)
+    _append_command_agent_metadata(
+        body,
+        instruction=instruction,
+        context_summary=context_summary,
+        created_at=created_at,
+    )
+
+    _append_paragraph(body, "Summary", bold=True, spacing_after=80)
+    _append_rich_paragraph(
+        body,
+        summary or "No summary returned.",
+        spacing_after=180,
+    )
+
+    _append_paragraph(body, "Content", bold=True, spacing_after=80)
+    _append_command_agent_content(body, content)
+
+    _append_paragraph(body, "Suggested Next Actions", bold=True, spacing_after=80)
+    if suggested_actions:
+        for index, action in enumerate(suggested_actions, start=1):
+            _append_rich_paragraph(
+                body,
+                f"{index}. {action}",
+                spacing_after=80,
+            )
+    else:
+        _append_paragraph(body, "No suggested actions returned.", spacing_after=160)
+
+    _append_section_properties(body)
+    return _package_document(document)
 
 
 def _append_content_summary_section(
@@ -601,3 +820,21 @@ def generate_content_summary_word_document(summary: dict[str, object]) -> bytes:
         raise WordExportError("Content summary is empty. Generate a content summary before exporting.")
 
     return _build_content_summary_document(summary)
+
+
+def generate_command_agent_word_document(
+    instruction: str,
+    result: dict[str, object],
+    context_summary: dict[str, object] | None = None,
+    created_at: str | None = None,
+) -> bytes:
+    if not isinstance(result, dict):
+        raise WordExportError("Command Agent result is required.")
+
+    normalized_context = context_summary if isinstance(context_summary, dict) else {}
+    return _build_command_agent_document(
+        instruction=_safe_text(instruction) or "Not provided.",
+        result=result,
+        context_summary=normalized_context,
+        created_at=_safe_text(created_at),
+    )

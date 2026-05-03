@@ -17,13 +17,20 @@ from .word_export_service import (
     WORD_EXPORT_MODE_BILINGUAL_TABLE,
     WORD_EXPORT_MODE_TRANSCRIPT,
     WordExportError,
+    generate_command_agent_word_document,
     generate_content_summary_word_document,
     generate_word_document,
     validate_word_export_mode,
 )
 
 SubtitleExportFormat = Literal["srt", "word", "recognition_text"]
-ExportFormat = Literal["srt", "word", "recognition_text", "content_summary_word"]
+ExportFormat = Literal[
+    "srt",
+    "word",
+    "recognition_text",
+    "content_summary_word",
+    "command_agent_word",
+]
 WordExportMode = Literal["bilingualTable", "transcript"]
 
 DEFAULT_EXPORT_STEM = "linguasub-subtitles"
@@ -37,6 +44,7 @@ EXPORT_EXTENSION_MAP: dict[ExportFormat, str] = {
     "word": ".docx",
     "recognition_text": ".txt",
     "content_summary_word": ".docx",
+    "command_agent_word": ".docx",
 }
 
 
@@ -161,6 +169,9 @@ def _build_default_file_name(
 
     if export_format == "content_summary_word":
         return f"{stem}.content-summary.docx"
+
+    if export_format == "command_agent_word":
+        return f"{stem}.command-agent.docx"
 
     suffix = "bilingual" if bilingual else "single"
     return f"{stem}.{suffix}.srt"
@@ -473,6 +484,66 @@ def export_content_summary_word(
     )
 
 
+def export_command_agent_word(
+    *,
+    instruction: str = "",
+    result: dict[str, object] | None = None,
+    context_summary: dict[str, object] | None = None,
+    created_at: str | None = None,
+    source_file_path: str | Path | None = None,
+    file_name: str | None = None,
+) -> ExportResult:
+    if not source_file_path:
+        raise InvalidExportPathError("Source file path is required for Command Agent Word export.")
+    if not isinstance(result, dict):
+        raise ExportServiceError("Command Agent result is required.")
+
+    export_path, conflict_resolved, sanitized_file_name = _resolve_export_target(
+        source_file_path=source_file_path,
+        export_format="command_agent_word",
+        bilingual=False,
+        word_mode=WORD_EXPORT_MODE_BILINGUAL_TABLE,
+        file_name=file_name,
+    )
+
+    try:
+        content = generate_command_agent_word_document(
+            instruction=instruction,
+            result=result,
+            context_summary=context_summary,
+            created_at=created_at,
+        )
+        export_path.write_bytes(content)
+    except WordExportError as exc:
+        raise ExportServiceError(str(exc)) from exc
+    except OSError as exc:
+        raw_error = exc.strerror or str(exc)
+        lowered = raw_error.lower()
+        if getattr(exc, "winerror", None) == 32:
+            raise ExportWriteError(
+                f"Could not write export file '{export_path.name}'. The file is currently open in another program. Close the file and try again."
+            ) from exc
+        if getattr(exc, "winerror", None) == 5 or "permission denied" in lowered:
+            raise ExportWriteError(
+                f"Could not write export file '{export_path.name}'. LinguaSub does not have permission to write to the target folder."
+            ) from exc
+        raise ExportWriteError(
+            f"Could not write export file '{export_path.name}'. {raw_error}"
+        ) from exc
+
+    return ExportResult(
+        path=str(export_path),
+        directory=str(export_path.parent),
+        fileName=export_path.name,
+        format="command_agent_word",
+        bilingual=False,
+        wordMode=None,
+        count=1,
+        conflictResolved=conflict_resolved,
+        sanitizedFileName=sanitized_file_name,
+    )
+
+
 def exportSrt(
     segments: list[SubtitleSegment],
     *,
@@ -524,6 +595,25 @@ def exportContentSummaryWord(
 ) -> ExportResult:
     return export_content_summary_word(
         summary=summary,
+        source_file_path=source_file_path,
+        file_name=file_name,
+    )
+
+
+def exportCommandAgentWord(
+    *,
+    instruction: str = "",
+    result: dict[str, object] | None = None,
+    context_summary: dict[str, object] | None = None,
+    created_at: str | None = None,
+    source_file_path: str | Path | None = None,
+    file_name: str | None = None,
+) -> ExportResult:
+    return export_command_agent_word(
+        instruction=instruction,
+        result=result,
+        context_summary=context_summary,
+        created_at=created_at,
         source_file_path=source_file_path,
         file_name=file_name,
     )

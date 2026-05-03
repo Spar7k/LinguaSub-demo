@@ -9,7 +9,9 @@ from zipfile import ZipFile
 from backend.app.export_service import (
     EmptySubtitleExportError,
     ExportServiceError,
+    InvalidExportPathError,
     MissingTranslationExportError,
+    export_command_agent_word,
     export_content_summary_word,
     export_srt,
     export_subtitles,
@@ -38,6 +40,11 @@ class ExportServiceTests(unittest.TestCase):
             "custom-review.docx",
             "custom-summary.docx",
             "subtitle-file.content-summary.docx",
+            "subtitle-file.command-agent.docx",
+            "my-agent-result.docx",
+            "invalid-actions.docx",
+            "unicode-agent.docx",
+            "markdown-agent.docx",
             "long-range.docx",
             "unicode-export.docx",
             "unsafe_name_.srt",
@@ -517,6 +524,158 @@ class ExportServiceTests(unittest.TestCase):
                 },
                 source_file_path=FIXTURE_DIR / "subtitle-file.srt",
             )
+
+    def test_export_command_agent_word_writes_docx_with_auto_name(self) -> None:
+        result = export_command_agent_word(
+            instruction="生成课堂汇报稿",
+            result={
+                "intent": "presentation_script",
+                "title": "课堂汇报稿",
+                "summary": "围绕视频内容生成汇报结构。",
+                "content": "这是可直接朗读的正文。",
+                "suggestedActions": ["继续优化输出", "导出 Word"],
+                "diagnostics": {"provider": "hidden"},
+            },
+            context_summary={
+                "videoName": "lesson.mp4",
+                "subtitleCount": 86,
+                "translatedCount": 80,
+                "translationCoverage": 93,
+                "sourceLanguage": "en",
+                "targetLanguage": "zh-CN",
+                "videoPath": "D:/private/lesson.mp4",
+            },
+            created_at="2026-05-03T10:30:00Z",
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+        )
+
+        output_path = Path(result.path)
+        self.assertTrue(output_path.exists())
+        self.assertEqual(result.fileName, "subtitle-file.command-agent.docx")
+        self.assertEqual(result.format, "command_agent_word")
+        self.assertEqual(result.count, 1)
+        self.assertFalse(result.bilingual)
+        self.assertIsNone(result.wordMode)
+
+        with ZipFile(output_path) as archive:
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+
+        self.assertIn("课堂汇报稿", document_xml)
+        self.assertIn("生成课堂汇报稿", document_xml)
+        self.assertIn("lesson.mp4", document_xml)
+        self.assertIn("en -&gt; zh-CN", document_xml)
+        self.assertIn("这是可直接朗读的正文。", document_xml)
+        self.assertIn("继续优化输出", document_xml)
+        self.assertNotIn("provider", document_xml)
+        self.assertNotIn("D:/private/lesson.mp4", document_xml)
+
+    def test_export_command_agent_word_adds_docx_extension_to_custom_name(self) -> None:
+        result = export_command_agent_word(
+            instruction="Create notes.",
+            result={
+                "title": "Agent Notes",
+                "summary": "Short summary.",
+                "content": "Generated body.",
+                "suggestedActions": [],
+            },
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            file_name="my-agent-result",
+        )
+
+        output_path = Path(result.path)
+        self.assertTrue(output_path.exists())
+        self.assertEqual(result.fileName, "my-agent-result.docx")
+        self.assertEqual(output_path.suffix, ".docx")
+
+    def test_export_command_agent_word_raises_when_content_is_empty(self) -> None:
+        with self.assertRaisesRegex(ExportServiceError, "content is empty"):
+            export_command_agent_word(
+                instruction="Create notes.",
+                result={
+                    "title": "Empty",
+                    "summary": "No content.",
+                    "content": " ",
+                    "suggestedActions": [],
+                },
+                source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            )
+
+    def test_export_command_agent_word_requires_source_file_path(self) -> None:
+        with self.assertRaisesRegex(InvalidExportPathError, "Source file path is required"):
+            export_command_agent_word(
+                instruction="Create notes.",
+                result={
+                    "title": "Agent Notes",
+                    "summary": "Short summary.",
+                    "content": "Generated body.",
+                    "suggestedActions": [],
+                },
+                source_file_path=None,
+            )
+
+    def test_export_command_agent_word_ignores_invalid_suggested_actions(self) -> None:
+        result = export_command_agent_word(
+            instruction="Create notes.",
+            result={
+                "title": "Agent Notes",
+                "summary": "Short summary.",
+                "content": "Generated body.",
+                "suggestedActions": {"label": "导出 Word"},
+            },
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            file_name="invalid-actions",
+        )
+
+        output_path = Path(result.path)
+        self.assertTrue(output_path.exists())
+        with ZipFile(output_path) as archive:
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+
+        self.assertIn("No suggested actions returned.", document_xml)
+
+    def test_export_command_agent_word_preserves_unicode_content(self) -> None:
+        result = export_command_agent_word(
+            instruction="整理成多语言学习笔记",
+            result={
+                "title": "多语言笔记",
+                "summary": "包含中文、English、日本語 和 한국어。",
+                "content": "神经发生 explains learning.\n日本語の例。\n한국어 예시.",
+                "suggestedActions": "导出 Word",
+            },
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            file_name="unicode-agent",
+        )
+
+        with ZipFile(Path(result.path)) as archive:
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+
+        self.assertIn("多语言笔记", document_xml)
+        self.assertIn("神经发生", document_xml)
+        self.assertIn("日本語の例。", document_xml)
+        self.assertIn("한국어 예시.", document_xml)
+        self.assertIn("导出 Word", document_xml)
+
+    def test_export_command_agent_word_accepts_markdownish_content(self) -> None:
+        result = export_command_agent_word(
+            instruction="整理成学习笔记",
+            result={
+                "title": "学习笔记",
+                "summary": "Markdown-like content should export.",
+                "content": "## 核心知识点\n\n**神经发生** 是大脑形成新神经元的过程。\n1. 保持学习。",
+                "suggestedActions": ["继续优化输出"],
+            },
+            source_file_path=FIXTURE_DIR / "subtitle-file.srt",
+            file_name="markdown-agent",
+        )
+
+        output_path = Path(result.path)
+        self.assertTrue(output_path.exists())
+        with ZipFile(output_path) as archive:
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+
+        self.assertIn("核心知识点", document_xml)
+        self.assertIn("神经发生", document_xml)
+        self.assertIn("1. 保持学习。", document_xml)
 
 
 if __name__ == "__main__":
