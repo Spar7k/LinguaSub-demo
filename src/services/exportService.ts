@@ -1,5 +1,7 @@
 import type { SubtitleSegment } from '../types/models'
 import type {
+  CommandAgentWordExportRequest,
+  CommandAgentWordExportResult,
   ContentSummaryWordExportRequest,
   ContentSummaryWordExportResult,
   ExportFormat,
@@ -47,6 +49,27 @@ export async function exportContentSummaryWord({
     method: 'POST',
     body: JSON.stringify({
       summary,
+      sourceFilePath,
+      fileName,
+    }),
+  })
+}
+
+export async function exportCommandAgentWord({
+  instruction,
+  result,
+  contextSummary,
+  createdAt,
+  sourceFilePath,
+  fileName = null,
+}: CommandAgentWordExportRequest): Promise<CommandAgentWordExportResult> {
+  return requestJson<CommandAgentWordExportResult>('/export/command-agent-word', {
+    method: 'POST',
+    body: JSON.stringify({
+      instruction,
+      result,
+      contextSummary,
+      createdAt,
       sourceFilePath,
       fileName,
     }),
