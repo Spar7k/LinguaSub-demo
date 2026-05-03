@@ -163,7 +163,10 @@ function createEmptyAgentSessionState(): AgentSessionState {
 }
 
 function createEmptyCommandAgentState(): CommandAgentState {
-  return {}
+  return {
+    items: [],
+    activeItemId: undefined,
+  }
 }
 
 function getVideoSubtitleSidebarCopy(
@@ -2737,8 +2740,27 @@ function App() {
 
   function handleSaveCommandAgentResult(item: CommandAgentSessionItem) {
     startTransition(() => {
-      setCommandAgentState({
-        latestItem: item,
+      setCommandAgentState((current) => ({
+        items: [
+          item,
+          ...current.items.filter((historyItem) => historyItem.id !== item.id),
+        ].slice(0, 10),
+        activeItemId: item.id,
+      }))
+    })
+  }
+
+  function handleSelectCommandAgentResult(id: string) {
+    startTransition(() => {
+      setCommandAgentState((current) => {
+        if (!current.items.some((item) => item.id === id)) {
+          return current
+        }
+
+        return {
+          ...current,
+          activeItemId: id,
+        }
       })
     })
   }
@@ -3730,6 +3752,7 @@ function App() {
               segmentSignature={currentSegmentSignature}
               commandAgentState={commandAgentState}
               onSaveCommandAgentResult={handleSaveCommandAgentResult}
+              onSelectCommandAgentResult={handleSelectCommandAgentResult}
             />
           ) : null}
 

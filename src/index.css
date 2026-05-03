@@ -2205,6 +2205,17 @@ ol {
   color: var(--color-danger);
 }
 
+.ai-workbench-result-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.34fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.ai-workbench-result-main {
+  min-width: 0;
+}
+
 .ai-workbench-result-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
@@ -2243,6 +2254,77 @@ ol {
   color: var(--text-muted);
   line-height: 1.6;
   overflow-wrap: anywhere;
+}
+
+.ai-workbench-history-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+}
+
+.ai-workbench-history-title strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-primary);
+}
+
+.ai-workbench-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-workbench-history-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  text-align: left;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.ai-workbench-history-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 146, 120, 0.28);
+  box-shadow: var(--shadow-sm);
+}
+
+.ai-workbench-history-item-active {
+  border-color: rgba(125, 146, 120, 0.4);
+  background: var(--color-accent-subtle);
+}
+
+.ai-workbench-history-item__title,
+.ai-workbench-history-item__instruction {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-workbench-history-item__title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ai-workbench-history-item__instruction,
+.ai-workbench-history-meta {
+  color: var(--text-soft);
+  font-size: 12px;
 }
 
 .ai-workbench-suggestion-list {
@@ -3229,6 +3311,7 @@ ol {
   .agent-result-grid,
   .ai-workbench-context-grid,
   .ai-workbench-example-grid,
+  .ai-workbench-result-layout,
   .ai-workbench-result-grid,
   .editor-row__fields {
     grid-template-columns: 1fr;

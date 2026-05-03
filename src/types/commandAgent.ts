@@ -28,5 +28,6 @@ export interface CommandAgentSessionItem {
 }
 
 export interface CommandAgentState {
-  latestItem?: CommandAgentSessionItem
+  items: CommandAgentSessionItem[]
+  activeItemId?: string
 }

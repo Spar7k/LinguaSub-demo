@@ -20,6 +20,7 @@ type CommandAgentWorkspaceProps = {
   segmentSignature?: string
   commandAgentState: CommandAgentState
   onSaveCommandAgentResult: (item: CommandAgentSessionItem) => void
+  onSelectCommandAgentResult: (id: string) => void
 }
 
 function formatLanguageDirection(
@@ -55,6 +56,7 @@ export function CommandAgentWorkspace({
   segmentSignature,
   commandAgentState,
   onSaveCommandAgentResult,
+  onSelectCommandAgentResult,
 }: CommandAgentWorkspaceProps) {
   const { m } = useI18n()
   const copy = m.aiWorkbench
@@ -72,7 +74,11 @@ export function CommandAgentWorkspace({
     targetLanguage,
     copy.unknownLanguageDirection,
   )
-  const latestItem = commandAgentState.latestItem
+  const historyItems = commandAgentState.items.slice(0, 10)
+  const activeItem =
+    commandAgentState.items.find(
+      (item) => item.id === commandAgentState.activeItemId,
+    ) ?? commandAgentState.items[0]
 
   function buildContextSummary(): CommandAgentContextSummary {
     return {
@@ -250,43 +256,87 @@ export function CommandAgentWorkspace({
             </div>
           ) : null}
 
-          {latestItem ? (
-            <div className="ai-workbench-result-grid">
-              <section>
-                <span className="field-label">{copy.latestResult}</span>
-                <strong>{latestItem.result.title}</strong>
-                <span className="ai-workbench-result-meta">
-                  {copy.createdAt(new Date(latestItem.createdAt).toLocaleString())}
-                </span>
-              </section>
-              <section>
-                <span className="field-label">{copy.understoodTask}</span>
-                <p>{latestItem.instruction}</p>
-              </section>
-              <section>
-                <span className="field-label">{copy.summaryTitle}</span>
-                <p>{latestItem.result.summary}</p>
-              </section>
-              <section>
-                <span className="field-label">{copy.outputTitle}</span>
-                <p>{latestItem.result.content}</p>
-              </section>
-              <section>
-                <span className="field-label">{copy.suggestedActionsTitle}</span>
-                <div className="ai-workbench-suggestion-list">
-                  {latestItem.result.suggestedActions.map((action) => (
-                    <span className="ai-workbench-suggestion-chip" key={action}>
-                      {action}
+          <div className="ai-workbench-result-layout">
+            <div className="ai-workbench-result-main">
+              {activeItem ? (
+                <div className="ai-workbench-result-grid">
+                  <section>
+                    <span className="field-label">{copy.activeResult}</span>
+                    <strong>{activeItem.result.title}</strong>
+                    <span className="ai-workbench-result-meta">
+                      {copy.createdAt(
+                        new Date(activeItem.createdAt).toLocaleString(),
+                      )}
                     </span>
-                  ))}
+                  </section>
+                  <section>
+                    <span className="field-label">{copy.understoodTask}</span>
+                    <p>{activeItem.instruction}</p>
+                  </section>
+                  <section>
+                    <span className="field-label">{copy.summaryTitle}</span>
+                    <p>{activeItem.result.summary}</p>
+                  </section>
+                  <section>
+                    <span className="field-label">{copy.outputTitle}</span>
+                    <p>{activeItem.result.content}</p>
+                  </section>
+                  <section>
+                    <span className="field-label">{copy.suggestedActionsTitle}</span>
+                    <div className="ai-workbench-suggestion-list">
+                      {activeItem.result.suggestedActions.map((action) => (
+                        <span className="ai-workbench-suggestion-chip" key={action}>
+                          {action}
+                        </span>
+                      ))}
+                    </div>
+                  </section>
                 </div>
-              </section>
+              ) : (
+                <p className="ai-workbench-result-placeholder">
+                  {copy.resultPlaceholder}
+                </p>
+              )}
             </div>
-          ) : (
-            <p className="ai-workbench-result-placeholder">
-              {copy.resultPlaceholder}
-            </p>
-          )}
+
+            <aside className="ai-workbench-history-card">
+              <div className="ai-workbench-history-title">
+                <span className="field-label">{copy.historyTitle}</span>
+                <strong>{copy.recentResult}</strong>
+              </div>
+              {historyItems.length > 0 ? (
+                <div className="ai-workbench-history-list">
+                  {historyItems.map((item) => {
+                    const isActive = item.id === activeItem?.id
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={
+                          isActive
+                            ? 'ai-workbench-history-item ai-workbench-history-item-active'
+                            : 'ai-workbench-history-item'
+                        }
+                        onClick={() => onSelectCommandAgentResult(item.id)}
+                      >
+                        <span className="ai-workbench-history-item__title">
+                          {item.result.title || copy.historyInstructionFallback}
+                        </span>
+                        <span className="ai-workbench-history-item__instruction">
+                          {item.instruction || copy.historyInstructionFallback}
+                        </span>
+                        <span className="ai-workbench-history-meta">
+                          {new Date(item.createdAt).toLocaleString()}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="ai-workbench-result-placeholder">{copy.noHistory}</p>
+              )}
+            </aside>
+          </div>
         </div>
       </SectionCard>
     </>
