@@ -27,6 +27,8 @@ AGENT_MAX_SEGMENT_TEXT_CHAR_COUNT = 8000
 MAX_AGENT_ISSUES = 100
 AGENT_QUALITY_MAX_TOKENS = 2600
 AGENT_SUMMARY_MAX_TOKENS = 3600
+AGENT_COMMAND_MAX_TOKENS = 4200
+COMMAND_AGENT_DEFAULT_SUGGESTED_ACTIONS = ["导出 Word", "继续优化输出内容"]
 FRIENDLY_AGENT_JSON_ERROR = (
     "The AI returned an incomplete result. Please try again, reduce subtitle length, or switch models."
 )
@@ -103,6 +105,36 @@ Return this JSON shape:
   "studyNotes": "Structured study notes."
 }
 For very short input, return concise summaries and empty arrays where appropriate.
+""".strip()
+
+COMMAND_AGENT_SYSTEM_PROMPT = """
+You are LinguaSub's Command Agent.
+Generate useful text results from the user's natural-language instruction and the provided subtitle context.
+Return one complete valid JSON object only. Do not include markdown, comments, explanations, or code fences.
+Use only the provided subtitle content and safe project context. Do not invent unsupported facts.
+You may generate summaries, study notes, presentation scripts, speech drafts, social copy, or other text outputs.
+You can only generate text content and suggested next actions.
+Do not claim that you have exported files, transcribed video, translated subtitles, burned subtitles into video, saved files, or performed filesystem operations.
+If the user asks for file export, video transcription, subtitle translation, video burning, file saving, or filesystem operations, describe the text result and put those operations in suggestedActions as next steps.
+Do not copy long subtitle text verbatim. Keep summary concise, but make content useful and complete.
+Close every JSON object, array, and string.
+
+Return this JSON shape:
+{
+  "intent": "presentation_script",
+  "title": "Result title",
+  "summary": "Brief task summary.",
+  "content": "Complete user-facing text result.",
+  "suggestedActions": ["Export Word", "Generate an English version"],
+  "diagnostics": {}
+}
+intent should classify the instruction, for example:
+- presentation_script
+- study_notes
+- social_post
+- speech_script
+- content_summary
+- generic_command
 """.strip()
 
 VALID_ISSUE_SEVERITIES = {"info", "warning", "error"}
@@ -436,6 +468,65 @@ def summarize_subtitle_content(
     return _merge_content_summary_results(chunk_results, plan)
 
 
+def run_command_agent(
+    *,
+    instruction: str,
+    segments: list[SubtitleSegment],
+    config: AppConfig,
+    context: dict[str, Any] | None = None,
+    timeout_seconds: int | str | None = DEFAULT_AGENT_TIMEOUT_SECONDS,
+    client: AgentChatCompletionClient | None = None,
+) -> dict[str, Any]:
+    normalized_instruction = _safe_string(instruction).strip()
+    if not normalized_instruction:
+        raise AgentInputError("Command instruction is required.")
+    if not segments:
+        raise AgentInputError("At least one subtitle segment is required.")
+
+    plan = _build_compact_segment_plan(segments)
+    normalized_timeout = _normalize_timeout_seconds(timeout_seconds)
+    request_context = _normalize_command_context(context)
+    provider_diagnostics = _build_agent_provider_diagnostics(config)
+    chunk_results: list[dict[str, Any]] = []
+
+    for chunk_index, chunk_segments in enumerate(plan.chunks):
+        user_prompt = {
+            "instruction": normalized_instruction,
+            "task": (
+                "Generate a text result for the user's command using this subtitle chunk. "
+                "Return JSON only. Do not claim that file export, transcription, translation, "
+                "video burning, saving, or filesystem operations have already been completed."
+            ),
+            "context": request_context,
+            "chunkIndex": chunk_index + 1,
+            "chunkCount": len(plan.chunks),
+            "segments": chunk_segments,
+            "outputRules": [
+                "Return intent, title, summary, content, suggestedActions, and diagnostics.",
+                "If an operation would require app tooling, put it in suggestedActions instead of claiming it is done.",
+                "Keep suggestedActions as short strings.",
+            ],
+        }
+        response_object = _request_agent_json_object(
+            config=config,
+            system_prompt=COMMAND_AGENT_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            timeout_seconds=normalized_timeout,
+            max_tokens=AGENT_COMMAND_MAX_TOKENS,
+            client=client,
+        )
+        chunk_results.append(_normalize_command_agent_result(response_object))
+
+    return _merge_command_agent_results(
+        chunk_results,
+        plan,
+        extra_diagnostics={
+            **provider_diagnostics,
+            "timeoutSeconds": normalized_timeout,
+        },
+    )
+
+
 def _request_agent_json_object(
     *,
     config: AppConfig,
@@ -443,6 +534,7 @@ def _request_agent_json_object(
     user_prompt: dict[str, Any],
     timeout_seconds: int | str | None,
     max_tokens: int,
+    client: AgentChatCompletionClient | None = None,
 ) -> dict[str, Any]:
     provider_config = resolve_translation_provider_config(config)
     if not provider_config.baseUrl:
@@ -450,8 +542,8 @@ def _request_agent_json_object(
     if not provider_config.model:
         raise ProviderApiError("Agent request is missing a model name.")
 
-    client = AgentChatCompletionClient(provider_config.provider)
-    return client.request_json_object(
+    active_client = client or AgentChatCompletionClient(provider_config.provider)
+    return active_client.request_json_object(
         provider_name=provider_config.provider,
         api_key=provider_config.apiKey,
         base_url=provider_config.baseUrl,
@@ -678,6 +770,56 @@ def _normalize_content_summary_result(
     }
 
 
+def _normalize_command_agent_result(
+    response_object: dict[str, Any],
+) -> dict[str, Any]:
+    intent = _safe_string(response_object.get("intent")).strip() or "generic_command"
+    title = _safe_string(response_object.get("title")).strip() or "Command Agent Result"
+    content = _safe_string(response_object.get("content")).strip()
+    if not content:
+        raise AgentServiceError("Command Agent response did not include usable content.")
+
+    summary = _safe_string(response_object.get("summary")).strip()
+    if not summary:
+        summary = _build_content_preview(content, limit=160)
+
+    suggested_actions = _normalize_suggested_actions(
+        response_object.get("suggestedActions")
+    )
+
+    return {
+        "intent": intent,
+        "title": title,
+        "summary": summary,
+        "content": content,
+        "suggestedActions": suggested_actions,
+        "diagnostics": _safe_object(response_object.get("diagnostics")),
+    }
+
+
+def _normalize_suggested_actions(value: Any) -> list[str]:
+    actions: list[str] = []
+    if isinstance(value, str):
+        actions = [_safe_string(value).strip()]
+    elif isinstance(value, list):
+        actions = [
+            item.strip()
+            for item in value
+            if isinstance(item, str) and item.strip()
+        ]
+
+    deduplicated: list[str] = []
+    seen: set[str] = set()
+    for action in actions:
+        normalized = action.casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduplicated.append(action)
+
+    return deduplicated or list(COMMAND_AGENT_DEFAULT_SUGGESTED_ACTIONS)
+
+
 def _merge_subtitle_quality_results(
     chunk_results: list[dict[str, Any]],
     plan: AgentChunkPlan,
@@ -817,6 +959,81 @@ def _merge_content_summary_results(
     }
 
 
+def _merge_command_agent_results(
+    chunk_results: list[dict[str, Any]],
+    plan: AgentChunkPlan,
+    *,
+    extra_diagnostics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not chunk_results:
+        raise TranslationParseError("Agent returned no command results.")
+
+    base_diagnostics: dict[str, Any] = {
+        **_collect_parse_retry_diagnostics(chunk_results),
+        "finalMergePerformed": False,
+    }
+    if extra_diagnostics:
+        base_diagnostics.update(extra_diagnostics)
+
+    if len(chunk_results) == 1:
+        merged = dict(chunk_results[0])
+        diagnostics = _safe_object(merged.get("diagnostics"))
+        merged["diagnostics"] = _build_chunk_diagnostics(
+            plan,
+            {
+                **diagnostics,
+                **base_diagnostics,
+            },
+        )
+        return merged
+
+    intent = "generic_command"
+    titles: list[str] = []
+    summaries: list[str] = []
+    content_parts: list[str] = []
+    suggested_actions: list[str] = []
+
+    for index, chunk_result in enumerate(chunk_results, start=1):
+        chunk_intent = _safe_string(chunk_result.get("intent")).strip()
+        if intent == "generic_command" and chunk_intent and chunk_intent != "generic_command":
+            intent = chunk_intent
+
+        title = _safe_string(chunk_result.get("title")).strip()
+        if title:
+            titles.append(title)
+
+        summary = _safe_string(chunk_result.get("summary")).strip()
+        if summary:
+            summaries.append(summary)
+
+        content = _safe_string(chunk_result.get("content")).strip()
+        if content:
+            content_parts.append(f"Part {index}\n{content}")
+
+        for action in _normalize_suggested_actions(
+            chunk_result.get("suggestedActions")
+        ):
+            normalized_action = action.casefold()
+            if normalized_action not in {item.casefold() for item in suggested_actions}:
+                suggested_actions.append(action)
+
+    return {
+        "intent": intent,
+        "title": titles[0] if titles else "Command Agent Result",
+        "summary": _join_limited_texts(summaries, limit=700),
+        "content": "\n\n".join(content_parts),
+        "suggestedActions": suggested_actions
+        or list(COMMAND_AGENT_DEFAULT_SUGGESTED_ACTIONS),
+        "diagnostics": _build_chunk_diagnostics(
+            plan,
+            {
+                **base_diagnostics,
+                "suggestedActionDeduplicated": True,
+            },
+        ),
+    }
+
+
 def _merge_quality_summaries(
     summaries: list[str],
     plan: AgentChunkPlan,
@@ -935,6 +1152,44 @@ def _build_agent_request_context(
     return f"provider={provider} model={model or '<missing>'} base_url={base_url or '<missing>'}"
 
 
+def _build_agent_provider_diagnostics(config: AppConfig) -> dict[str, Any]:
+    provider_config = resolve_translation_provider_config(config)
+    return {
+        "provider": provider_config.provider,
+        "model": provider_config.model,
+    }
+
+
+def _normalize_command_context(context: dict[str, Any] | None) -> dict[str, str]:
+    if not isinstance(context, dict):
+        return {}
+
+    video_name = _safe_optional_string(context.get("videoName"))
+    if video_name is None:
+        video_name = _basename_from_path(context.get("videoPath"))
+
+    normalized: dict[str, str] = {}
+    if video_name:
+        normalized["videoName"] = video_name
+
+    for key in ("sourceLanguage", "targetLanguage", "bilingualMode"):
+        value = _safe_optional_string(context.get(key))
+        if value:
+            normalized[key] = value
+
+    return normalized
+
+
+def _basename_from_path(value: Any) -> str | None:
+    text = _safe_string(value).strip()
+    if not text:
+        return None
+
+    normalized = text.replace("\\", "/")
+    name = normalized.rsplit("/", 1)[-1].strip()
+    return name or None
+
+
 def _safe_optional_string(value: Any) -> str | None:
     if value is None:
         return None
@@ -1041,14 +1296,18 @@ def _build_content_preview(content: str, limit: int = 260) -> str:
 
 analyzeSubtitleQuality = analyze_subtitle_quality
 summarizeSubtitleContent = summarize_subtitle_content
+runCommandAgent = run_command_agent
 
 __all__ = [
     "AgentInputError",
     "AgentServiceError",
+    "COMMAND_AGENT_SYSTEM_PROMPT",
     "CONTENT_SUMMARY_SYSTEM_PROMPT",
     "SUBTITLE_QUALITY_SYSTEM_PROMPT",
     "analyzeSubtitleQuality",
     "analyze_subtitle_quality",
+    "runCommandAgent",
+    "run_command_agent",
     "summarizeSubtitleContent",
     "summarize_subtitle_content",
 ]

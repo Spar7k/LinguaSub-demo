@@ -11,6 +11,7 @@ from backend.app.agent_service import (
     AgentInputError,
     FRIENDLY_AGENT_JSON_ERROR,
     analyze_subtitle_quality,
+    run_command_agent,
     summarize_subtitle_content,
 )
 from backend.app.models import SubtitleSegment, create_default_app_config
@@ -119,6 +120,31 @@ class AgentServiceTests(unittest.TestCase):
                         }
                     ],
                     "studyNotes": study_notes,
+                },
+                ensure_ascii=False,
+            )
+        )
+
+    def build_command_response(
+        self,
+        *,
+        intent: str = "presentation_script",
+        title: str = "Presentation Script",
+        summary: str = "A concise presentation script.",
+        content: str = "Here is the generated command output.",
+        suggested_actions: object | None = None,
+    ) -> dict[str, object]:
+        return self.build_chat_response(
+            json.dumps(
+                {
+                    "intent": intent,
+                    "title": title,
+                    "summary": summary,
+                    "content": content,
+                    "suggestedActions": suggested_actions
+                    if suggested_actions is not None
+                    else ["导出 Word", "生成英文版"],
+                    "diagnostics": {},
                 },
                 ensure_ascii=False,
             )
@@ -555,6 +581,192 @@ class AgentServiceTests(unittest.TestCase):
         self.assertEqual(result["keywords"], [])
         self.assertEqual(result["studyNotes"], "")
         self.assertFalse(result["diagnostics"]["chunked"])
+
+    def test_command_agent_rejects_empty_instruction(self) -> None:
+        with self.assertRaises(AgentInputError):
+            run_command_agent(
+                instruction="   ",
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+    def test_command_agent_rejects_empty_segments(self) -> None:
+        with self.assertRaises(AgentInputError):
+            run_command_agent(
+                instruction="Create notes.",
+                segments=[],
+                config=self.build_config(),
+            )
+
+    def test_command_agent_parses_normal_json(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            return_value=self.build_command_response(),
+        ) as mock_post_json:
+            result = run_command_agent(
+                instruction="Create a presentation script.",
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+                context={
+                    "videoName": "demo.mp4",
+                    "videoPath": "D:/private/demo.mp4",
+                    "sourceLanguage": "en",
+                    "targetLanguage": "zh-CN",
+                    "bilingualMode": "bilingual",
+                },
+                timeout_seconds=600,
+            )
+
+        self.assertEqual(result["intent"], "presentation_script")
+        self.assertEqual(result["title"], "Presentation Script")
+        self.assertEqual(result["summary"], "A concise presentation script.")
+        self.assertEqual(result["content"], "Here is the generated command output.")
+        self.assertEqual(result["suggestedActions"], ["导出 Word", "生成英文版"])
+        self.assertFalse(result["diagnostics"]["chunked"])
+        self.assertEqual(result["diagnostics"]["chunkCount"], 1)
+        self.assertEqual(result["diagnostics"]["totalSegments"], 1)
+        self.assertEqual(result["diagnostics"]["analyzedSegments"], 1)
+        self.assertEqual(result["diagnostics"]["timeoutSeconds"], 180)
+        self.assertIn("provider", result["diagnostics"])
+        self.assertIn("model", result["diagnostics"])
+
+        user_prompt = self.extract_prompt(mock_post_json)
+        self.assertEqual(user_prompt["instruction"], "Create a presentation script.")
+        self.assertNotIn("videoPath", user_prompt["context"])
+        self.assertEqual(user_prompt["context"]["videoName"], "demo.mp4")
+        self.assertEqual(
+            set(user_prompt["segments"][0].keys()),
+            {"id", "start", "end", "sourceText", "translatedText"},
+        )
+
+    def test_command_agent_accepts_fenced_json_with_wrapping_text(self) -> None:
+        content = """The result is:
+```json
+{
+  "intent": "study_notes",
+  "title": "学习笔记",
+  "summary": "Brief notes.",
+  "content": "Useful study notes.",
+  "suggestedActions": ["导出 Word"]
+}
+```
+Done."""
+
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            return_value=self.build_chat_response(content),
+        ):
+            result = run_command_agent(
+                instruction="整理成学习笔记",
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+        self.assertEqual(result["intent"], "study_notes")
+        self.assertEqual(result["title"], "学习笔记")
+        self.assertEqual(result["content"], "Useful study notes.")
+
+    def test_command_agent_retries_invalid_json_once_and_succeeds(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            side_effect=[
+                self.build_chat_response('{"intent": "study_notes", "content": '),
+                self.build_command_response(
+                    intent="study_notes",
+                    title="Recovered Notes",
+                    content="Recovered command output.",
+                ),
+            ],
+        ) as mock_post_json:
+            result = run_command_agent(
+                instruction="整理成学习笔记",
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+        self.assertEqual(mock_post_json.call_count, 2)
+        retry_prompt = self.extract_prompt(mock_post_json, call_index=1)
+        self.assertIn("previous response was not valid JSON", retry_prompt["instruction"])
+        self.assertEqual(result["title"], "Recovered Notes")
+        self.assertTrue(result["diagnostics"]["parseRetryAttempted"])
+        self.assertTrue(result["diagnostics"]["parseRetrySucceeded"])
+
+    def test_command_agent_safely_normalizes_invalid_suggested_actions(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            return_value=self.build_command_response(
+                suggested_actions={"label": "导出 Word"},
+            ),
+        ):
+            result = run_command_agent(
+                instruction="生成课堂汇报稿",
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+        self.assertIsInstance(result["suggestedActions"], list)
+        self.assertEqual(result["suggestedActions"], ["导出 Word", "继续优化输出内容"])
+        self.assertFalse(result["diagnostics"]["chunked"])
+        self.assertEqual(result["diagnostics"]["chunkCount"], 1)
+
+    def test_command_agent_prompt_forbids_claiming_completed_operations(self) -> None:
+        with patch.object(
+            AgentChatCompletionClient,
+            "_post_json",
+            return_value=self.build_command_response(),
+        ) as mock_post_json:
+            run_command_agent(
+                instruction="帮我导出 Word 并翻译字幕",
+                segments=[self.build_segment("seg-001")],
+                config=self.build_config(),
+            )
+
+        payload = mock_post_json.call_args.kwargs["payload"]
+        system_prompt = payload["messages"][0]["content"]
+        user_prompt = self.extract_prompt(mock_post_json)
+        self.assertIn("Do not claim that you have exported files", system_prompt)
+        self.assertIn("translated subtitles", system_prompt)
+        self.assertIn("saved files", system_prompt)
+        self.assertIn("filesystem operations", system_prompt)
+        self.assertIn("Do not claim that file export", user_prompt["task"])
+
+    def test_chunked_command_agent_merges_content(self) -> None:
+        segments = self.make_long_segments(3)
+
+        def respond_with_content(**kwargs):
+            prompt = json.loads(kwargs["payload"]["messages"][1]["content"])
+            segment_id = prompt["segments"][0]["id"]
+            return self.build_command_response(
+                intent="study_notes",
+                title=f"Notes for {segment_id}",
+                summary=f"Summary for {segment_id}.",
+                content=f"Content for {segment_id}.",
+                suggested_actions=["导出 Word", "继续优化输出内容"],
+            )
+
+        with patch("backend.app.agent_service.AGENT_MAX_CHUNK_INPUT_CHAR_COUNT", 600):
+            with patch.object(
+                AgentChatCompletionClient,
+                "_post_json",
+                side_effect=respond_with_content,
+            ):
+                result = run_command_agent(
+                    instruction="整理成学习笔记",
+                    segments=segments,
+                    config=self.build_config(),
+                )
+
+        self.assertEqual(result["intent"], "study_notes")
+        self.assertIn("Content for seg-001.", result["content"])
+        self.assertIn("Content for seg-002.", result["content"])
+        self.assertIn("Content for seg-003.", result["content"])
+        self.assertTrue(result["diagnostics"]["chunked"])
+        self.assertEqual(result["diagnostics"]["chunkCount"], 3)
+        self.assertFalse(result["diagnostics"]["finalMergePerformed"])
 
     def test_invalid_agent_json_retry_failure_returns_friendly_error(self) -> None:
         with patch.object(
