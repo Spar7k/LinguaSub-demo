@@ -109,6 +109,64 @@ class SpeechRuntimeServiceTests(unittest.TestCase):
 
         self.assertEqual(resolved, ffmpeg_path.resolve())
 
+    def test_resolve_ffmpeg_binary_falls_back_to_development_tauri_runtime(self) -> None:
+        sandbox = reset_sandbox("ffmpeg-development-runtime")
+        runtime_dir = sandbox / "src-tauri" / "resources" / "runtime" / "ffmpeg"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        ffmpeg_path = runtime_dir / "ffmpeg.exe"
+        ffmpeg_path.write_text("fake", encoding="utf-8")
+
+        with (
+            patch.dict(
+                os.environ,
+                {"LINGUASUB_FFMPEG_PATH": "", "LINGUASUB_RUNTIME_DIR": ""},
+                clear=False,
+            ),
+            patch("backend.app.speech_runtime_service.Path.cwd", return_value=sandbox),
+            patch(
+                "backend.app.speech_runtime_service.sys.argv",
+                ["Z:/unexpected/linguasub-backend.exe"],
+            ),
+            patch(
+                "backend.app.speech_runtime_service.sys.executable",
+                "Z:/unexpected/linguasub-backend.exe",
+            ),
+            patch("backend.app.speech_runtime_service.shutil.which", return_value=None),
+        ):
+            resolved = resolve_ffmpeg_binary()
+
+        self.assertEqual(resolved, ffmpeg_path.resolve())
+
+    def test_resolve_ffmpeg_binary_falls_back_to_development_runtime_from_backend_launch_dir(self) -> None:
+        sandbox = reset_sandbox("ffmpeg-development-launch-dir")
+        backend_dir = sandbox / "backend"
+        backend_dir.mkdir(parents=True, exist_ok=True)
+        runtime_dir = sandbox / "src-tauri" / "resources" / "runtime" / "ffmpeg"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        ffmpeg_path = runtime_dir / "ffmpeg.exe"
+        ffmpeg_path.write_text("fake", encoding="utf-8")
+
+        with (
+            patch.dict(
+                os.environ,
+                {"LINGUASUB_FFMPEG_PATH": "", "LINGUASUB_RUNTIME_DIR": ""},
+                clear=False,
+            ),
+            patch("backend.app.speech_runtime_service.Path.cwd", return_value=backend_dir),
+            patch(
+                "backend.app.speech_runtime_service.sys.argv",
+                [str(backend_dir / "run_server.py")],
+            ),
+            patch(
+                "backend.app.speech_runtime_service.sys.executable",
+                "Z:/unexpected/python.exe",
+            ),
+            patch("backend.app.speech_runtime_service.shutil.which", return_value=None),
+        ):
+            resolved = resolve_ffmpeg_binary()
+
+        self.assertEqual(resolved, ffmpeg_path.resolve())
+
     def test_resolve_ffprobe_binary_prefers_packaged_runtime_before_env_path(self) -> None:
         sandbox = reset_sandbox("ffprobe-packaged-runtime")
         runtime_dir = sandbox / "resources" / "runtime" / "ffmpeg"

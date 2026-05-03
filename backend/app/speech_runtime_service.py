@@ -149,8 +149,23 @@ def get_runtime_root() -> Path | None:
     return None
 
 
+def _append_development_runtime_candidates(
+    candidates: list[Path],
+    base_dir: Path,
+) -> None:
+    candidates.append((base_dir / "src-tauri" / "resources" / "runtime").resolve())
+
+    parent_dir = base_dir.parent
+    if parent_dir != base_dir:
+        candidates.append(
+            (parent_dir / "src-tauri" / "resources" / "runtime").resolve()
+        )
+
+
 def _iter_runtime_root_candidates() -> list[Path]:
     candidates: list[Path] = []
+    current_working_dir: Path | None = None
+    launch_dir: Path | None = None
     configured_root = os.getenv(RUNTIME_DIR_ENV)
     if configured_root:
         candidates.append(Path(configured_root).expanduser().resolve())
@@ -178,6 +193,11 @@ def _iter_runtime_root_candidates() -> list[Path]:
     if executable_dir is not None:
         candidates.append((executable_dir / "resources" / "runtime").resolve())
         candidates.append((executable_dir / "runtime").resolve())
+
+    if current_working_dir is not None:
+        _append_development_runtime_candidates(candidates, current_working_dir)
+    if launch_dir is not None:
+        _append_development_runtime_candidates(candidates, launch_dir)
 
     deduped_candidates: list[Path] = []
     seen: set[str] = set()
