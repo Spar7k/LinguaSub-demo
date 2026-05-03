@@ -316,6 +316,13 @@ const zhMessages = {
     errorTitle: '生成失败',
     errorSuggestionTitle: '你可以尝试：',
     retry: '重试',
+    exportWord: '导出 Word',
+    exportingWord: '正在导出...',
+    exportWordSuccess: 'Word 已导出',
+    exportWordFailed: 'Word 导出失败',
+    exportWordMissingSource: '当前结果缺少源文件路径，无法自动确定导出目录。',
+    exportWordPath: '输出路径',
+    exportWordDescription: '将当前 Agent 结果导出为 Word 文档。',
     errorHints: {
       backendUnavailable: '请确认 LinguaSub 后端已启动，或重新打开应用。',
       routeMissing: '当前后端版本可能过旧，请重新构建后端 sidecar 或重启开发后端。',
@@ -1011,6 +1018,14 @@ const enMessages = {
     errorTitle: 'Generation failed',
     errorSuggestionTitle: 'You can try:',
     retry: 'Retry',
+    exportWord: 'Export Word',
+    exportingWord: 'Exporting...',
+    exportWordSuccess: 'Word exported',
+    exportWordFailed: 'Word export failed',
+    exportWordMissingSource:
+      'This result is missing the source file path, so LinguaSub cannot choose an export directory.',
+    exportWordPath: 'Output path',
+    exportWordDescription: 'Export the current Agent result as a Word document.',
     errorHints: {
       backendUnavailable:
         'Make sure the LinguaSub backend is running, or reopen the app.',

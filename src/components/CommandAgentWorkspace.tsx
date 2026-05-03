@@ -1,8 +1,9 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { useI18n } from '../i18n/useI18n'
 import { runCommandAgent } from '../services/commandAgentService'
+import { exportCommandAgentWord } from '../services/exportService'
 import type {
   CommandAgentContextSummary,
   CommandAgentSessionItem,
@@ -25,6 +26,18 @@ type CommandAgentWorkspaceProps = {
   commandAgentState: CommandAgentState
   onSaveCommandAgentResult: (item: CommandAgentSessionItem) => void
   onSelectCommandAgentResult: (id: string) => void
+}
+
+type CommandAgentWordExportStatus = {
+  itemId: string
+  path: string
+  fileName: string
+  directory: string
+}
+
+type CommandAgentWordExportError = {
+  itemId: string
+  message: string
 }
 
 function formatLanguageDirection(
@@ -239,6 +252,11 @@ export function CommandAgentWorkspace({
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
+  const [isExportingWord, setIsExportingWord] = useState(false)
+  const [exportWordError, setExportWordError] =
+    useState<CommandAgentWordExportError | null>(null)
+  const [exportWordResult, setExportWordResult] =
+    useState<CommandAgentWordExportStatus | null>(null)
   const translatedRate =
     subtitleCount > 0 ? Math.round((translatedCount / subtitleCount) * 100) : 0
   const languageDirection = formatLanguageDirection(
@@ -254,6 +272,18 @@ export function CommandAgentWorkspace({
   const trimmedInstruction = safeTrim(instruction)
   const canRetry = Boolean(runError && trimmedInstruction && !isRunning)
   const runErrorHint = runError ? getRunErrorHint(runError, copy) : ''
+  const activeSourceFilePath = safeTrim(
+    activeItem?.contextSummary.sourceFilePath ?? '',
+  )
+  const activeExportWordResult =
+    exportWordResult?.itemId === activeItem?.id ? exportWordResult : null
+  const activeExportWordError =
+    exportWordError?.itemId === activeItem?.id ? exportWordError.message : null
+  const canExportWord = Boolean(activeItem && activeSourceFilePath && !isExportingWord)
+
+  useEffect(() => {
+    setExportWordError(null)
+  }, [activeItem?.id])
 
   function buildContextSummary(): CommandAgentContextSummary {
     return {
@@ -323,6 +353,63 @@ export function CommandAgentWorkspace({
       setRunError(error instanceof Error ? error.message : copy.runFailed)
     } finally {
       setIsRunning(false)
+    }
+  }
+
+  async function handleExportWord() {
+    if (!activeItem) {
+      return
+    }
+
+    if (!activeSourceFilePath) {
+      setExportWordError({
+        itemId: activeItem.id,
+        message: copy.exportWordMissingSource,
+      })
+      return
+    }
+
+    setIsExportingWord(true)
+    setExportWordError(null)
+    setExportWordResult(null)
+
+    try {
+      const result = await exportCommandAgentWord({
+        instruction: activeItem.instruction,
+        result: {
+          intent: activeItem.result.intent,
+          title: activeItem.result.title,
+          summary: activeItem.result.summary,
+          content: activeItem.result.content,
+          suggestedActions: activeItem.result.suggestedActions,
+        },
+        contextSummary: {
+          videoName: activeItem.contextSummary.videoName,
+          subtitleCount: activeItem.contextSummary.subtitleCount,
+          translatedCount: activeItem.contextSummary.translatedCount,
+          translationCoverage: activeItem.contextSummary.translationCoverage,
+          sourceLanguage: activeItem.contextSummary.sourceLanguage,
+          targetLanguage: activeItem.contextSummary.targetLanguage,
+          bilingualMode: activeItem.contextSummary.bilingualMode,
+        },
+        createdAt: activeItem.createdAt,
+        sourceFilePath: activeSourceFilePath,
+        fileName: null,
+      })
+
+      setExportWordResult({
+        itemId: activeItem.id,
+        path: result.path,
+        fileName: result.fileName,
+        directory: result.directory,
+      })
+    } catch (error) {
+      setExportWordError({
+        itemId: activeItem.id,
+        message: error instanceof Error ? error.message : copy.exportWordFailed,
+      })
+    } finally {
+      setIsExportingWord(false)
     }
   }
 
@@ -510,6 +597,45 @@ export function CommandAgentWorkspace({
                         new Date(activeItem.createdAt).toLocaleString(),
                       )}
                     </span>
+                    <div className="ai-workbench-export-row">
+                      <p>{copy.exportWordDescription}</p>
+                      <button
+                        type="button"
+                        className="button button--secondary"
+                        disabled={!canExportWord}
+                        onClick={() => {
+                          void handleExportWord()
+                        }}
+                      >
+                        {isExportingWord ? copy.exportingWord : copy.exportWord}
+                      </button>
+                    </div>
+                    {!activeSourceFilePath ? (
+                      <p className="ai-workbench-export-status ai-workbench-export-error">
+                        {copy.exportWordMissingSource}
+                      </p>
+                    ) : null}
+                    {activeExportWordError ? (
+                      <p
+                        className="ai-workbench-export-status ai-workbench-export-error"
+                        role="alert"
+                      >
+                        <strong>{copy.exportWordFailed}</strong>
+                        {activeExportWordError}
+                      </p>
+                    ) : null}
+                    {activeExportWordResult ? (
+                      <div
+                        className="ai-workbench-export-status ai-workbench-export-success"
+                        role="status"
+                      >
+                        <strong>{copy.exportWordSuccess}</strong>
+                        <span>{copy.exportWordPath}</span>
+                        <code className="ai-workbench-export-path">
+                          {activeExportWordResult.path}
+                        </code>
+                      </div>
+                    ) : null}
                   </section>
                   <section>
                     <span className="field-label">{copy.understoodTask}</span>
