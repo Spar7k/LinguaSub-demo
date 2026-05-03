@@ -17,6 +17,7 @@ type CommandAgentWorkspaceProps = {
   config: AppConfig | null
   videoName?: string | null
   videoPath?: string | null
+  sourceFilePath?: string | null
   sourceLanguage?: string | null
   targetLanguage?: string | null
   bilingualMode?: OutputMode | null
@@ -218,6 +219,7 @@ export function CommandAgentWorkspace({
   config,
   videoName,
   videoPath,
+  sourceFilePath,
   sourceLanguage,
   targetLanguage,
   bilingualMode,
@@ -257,6 +259,7 @@ export function CommandAgentWorkspace({
     return {
       videoName: safeTrim(videoName ?? '') || undefined,
       videoPath: safeTrim(videoPath ?? '') || undefined,
+      sourceFilePath: safeTrim(sourceFilePath ?? '') || undefined,
       subtitleCount,
       translatedCount,
       translationCoverage: translatedRate,

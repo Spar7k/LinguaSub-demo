@@ -3747,6 +3747,9 @@ function App() {
               config={config}
               videoName={getCurrentVideoName(importResult, projectState)}
               videoPath={getCurrentVideoPath(importResult, projectState)}
+              sourceFilePath={
+                importResult?.currentFile.path ?? projectState.currentFile?.path ?? null
+              }
               sourceLanguage={projectState.segments[0]?.sourceLanguage}
               targetLanguage={projectState.segments[0]?.targetLanguage}
               bilingualMode={selectedOutputMode}

@@ -3,6 +3,7 @@ import type { AppConfig, SubtitleSegment } from './models'
 export interface CommandAgentContextSummary {
   videoName?: string
   videoPath?: string
+  sourceFilePath?: string
   subtitleCount: number
   translatedCount: number
   translationCoverage: number
