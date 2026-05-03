@@ -1,6 +1,11 @@
 import { useState } from 'react'
 
 import { useI18n } from '../i18n/useI18n'
+import type {
+  CommandAgentContextSummary,
+  CommandAgentSessionItem,
+  CommandAgentState,
+} from '../types/commandAgent'
 import type { OutputMode, SubtitleSegment } from '../types/models'
 import { safeTrim } from '../utils/config'
 import { SectionCard } from './SectionCard'
@@ -12,12 +17,9 @@ type CommandAgentWorkspaceProps = {
   sourceLanguage?: string | null
   targetLanguage?: string | null
   bilingualMode?: OutputMode | null
-}
-
-type LocalCommandResult = {
-  understoodTask: string
-  output: string
-  suggestedActions: string[]
+  segmentSignature?: string
+  commandAgentState: CommandAgentState
+  onSaveCommandAgentResult: (item: CommandAgentSessionItem) => void
 }
 
 function formatLanguageDirection(
@@ -50,6 +52,9 @@ export function CommandAgentWorkspace({
   sourceLanguage,
   targetLanguage,
   bilingualMode,
+  segmentSignature,
+  commandAgentState,
+  onSaveCommandAgentResult,
 }: CommandAgentWorkspaceProps) {
   const { m } = useI18n()
   const copy = m.aiWorkbench
@@ -60,7 +65,6 @@ export function CommandAgentWorkspace({
   ).length
   const [instruction, setInstruction] = useState('')
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
-  const [localResult, setLocalResult] = useState<LocalCommandResult | null>(null)
   const translatedRate =
     subtitleCount > 0 ? Math.round((translatedCount / subtitleCount) * 100) : 0
   const languageDirection = formatLanguageDirection(
@@ -68,27 +72,48 @@ export function CommandAgentWorkspace({
     targetLanguage,
     copy.unknownLanguageDirection,
   )
+  const latestItem = commandAgentState.latestItem
+
+  function buildContextSummary(): CommandAgentContextSummary {
+    return {
+      videoName: safeTrim(videoName ?? '') || undefined,
+      videoPath: safeTrim(videoPath ?? '') || undefined,
+      subtitleCount,
+      translatedCount,
+      translationCoverage: translatedRate,
+      sourceLanguage: safeTrim(sourceLanguage ?? '') || undefined,
+      targetLanguage: safeTrim(targetLanguage ?? '') || undefined,
+      bilingualMode: bilingualMode ?? undefined,
+    }
+  }
 
   function handleRunCommand() {
     const trimmedInstruction = safeTrim(instruction)
 
     if (!hasSubtitles) {
       setAlertMessage(copy.noSubtitleRunError)
-      setLocalResult(null)
       return
     }
 
     if (!trimmedInstruction) {
       setAlertMessage(copy.emptyInstruction)
-      setLocalResult(null)
       return
     }
 
     setAlertMessage(null)
-    setLocalResult({
-      understoodTask: trimmedInstruction,
-      output: copy.mockOutput,
-      suggestedActions: [...copy.mockSuggestedActions],
+    onSaveCommandAgentResult({
+      id: `command-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      instruction: trimmedInstruction,
+      createdAt: new Date().toISOString(),
+      contextSummary: buildContextSummary(),
+      segmentSignature,
+      result: {
+        intent: 'mock_command',
+        title: copy.mockResultTitle,
+        summary: copy.mockResultSummary,
+        content: copy.mockOutput,
+        suggestedActions: [...copy.mockSuggestedActions],
+      },
     })
   }
 
@@ -225,20 +250,31 @@ export function CommandAgentWorkspace({
             </div>
           ) : null}
 
-          {localResult ? (
+          {latestItem ? (
             <div className="ai-workbench-result-grid">
               <section>
+                <span className="field-label">{copy.latestResult}</span>
+                <strong>{latestItem.result.title}</strong>
+                <span className="ai-workbench-result-meta">
+                  {copy.createdAt(new Date(latestItem.createdAt).toLocaleString())}
+                </span>
+              </section>
+              <section>
                 <span className="field-label">{copy.understoodTask}</span>
-                <p>{localResult.understoodTask}</p>
+                <p>{latestItem.instruction}</p>
+              </section>
+              <section>
+                <span className="field-label">{copy.summaryTitle}</span>
+                <p>{latestItem.result.summary}</p>
               </section>
               <section>
                 <span className="field-label">{copy.outputTitle}</span>
-                <p>{localResult.output}</p>
+                <p>{latestItem.result.content}</p>
               </section>
               <section>
                 <span className="field-label">{copy.suggestedActionsTitle}</span>
                 <div className="ai-workbench-suggestion-list">
-                  {localResult.suggestedActions.map((action) => (
+                  {latestItem.result.suggestedActions.map((action) => (
                     <span className="ai-workbench-suggestion-chip" key={action}>
                       {action}
                     </span>

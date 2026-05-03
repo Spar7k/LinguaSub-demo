@@ -32,6 +32,10 @@ import {
   type ContentSummaryResult,
   type SubtitleQualityResult,
 } from './types/agent'
+import type {
+  CommandAgentSessionItem,
+  CommandAgentState,
+} from './types/commandAgent'
 import {
   loadConfig,
   saveConfig,
@@ -156,6 +160,10 @@ function createEmptyAgentSessionState(): AgentSessionState {
     subtitleQuality: null,
     contentSummary: null,
   }
+}
+
+function createEmptyCommandAgentState(): CommandAgentState {
+  return {}
 }
 
 function getVideoSubtitleSidebarCopy(
@@ -1635,6 +1643,9 @@ function App() {
   const [agentState, setAgentState] = useState<AgentSessionState>(
     createEmptyAgentSessionState,
   )
+  const [commandAgentState, setCommandAgentState] = useState<CommandAgentState>(
+    createEmptyCommandAgentState,
+  )
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -2724,6 +2735,14 @@ function App() {
     })
   }
 
+  function handleSaveCommandAgentResult(item: CommandAgentSessionItem) {
+    startTransition(() => {
+      setCommandAgentState({
+        latestItem: item,
+      })
+    })
+  }
+
   const selectedOutputMode = config?.outputMode ?? fallbackOutputMode
   const currentSegmentSignature = useMemo(
     () => buildAgentSegmentSignature(projectState.segments),
@@ -3708,6 +3727,9 @@ function App() {
               sourceLanguage={projectState.segments[0]?.sourceLanguage}
               targetLanguage={projectState.segments[0]?.targetLanguage}
               bilingualMode={selectedOutputMode}
+              segmentSignature={currentSegmentSignature}
+              commandAgentState={commandAgentState}
+              onSaveCommandAgentResult={handleSaveCommandAgentResult}
             />
           ) : null}
 

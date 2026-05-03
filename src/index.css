@@ -2223,6 +2223,20 @@ ol {
   grid-column: 1 / -1;
 }
 
+.ai-workbench-result-grid strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-primary);
+}
+
+.ai-workbench-result-meta {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .ai-workbench-result-grid p,
 .ai-workbench-result-placeholder {
   margin: 8px 0 0;
