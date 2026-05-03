@@ -23,6 +23,7 @@ from .models import AppConfig, SubtitleSegment
 from .agent_service import (
     AgentInputError,
     analyze_subtitle_quality,
+    run_command_agent,
     summarize_subtitle_content,
 )
 from .export_service import (
@@ -215,6 +216,10 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
 
             if self.path == "/agent/content-summary":
                 self._handle_agent_content_summary()
+                return
+
+            if self.path == "/agent/command":
+                self._handle_agent_command()
                 return
 
             if self.path != "/translate":
@@ -792,6 +797,59 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
                 source_language=source_language,
                 target_language=target_language,
                 bilingual_mode=bilingual_mode,
+                timeout_seconds=timeout_seconds,
+            )
+        except AgentInputError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        except TranslationServiceError as exc:
+            self._send_error_json(HTTPStatus.BAD_GATEWAY, str(exc))
+            return
+
+        self._send_json(result)
+
+    def _read_command_agent_request_payload(
+        self,
+    ) -> tuple[
+        str,
+        list[SubtitleSegment],
+        AppConfig,
+        dict[str, Any] | None,
+        Any,
+    ]:
+        payload = self._read_json_body()
+        config = AppConfig.from_dict(payload["config"])
+        segments = [
+            SubtitleSegment.from_dict(item) for item in payload.get("segments", [])
+        ]
+        context = payload.get("context")
+        return (
+            str(payload.get("instruction", "")),
+            segments,
+            config,
+            context if isinstance(context, dict) else None,
+            payload.get("timeoutSeconds", 60),
+        )
+
+    def _handle_agent_command(self) -> None:
+        try:
+            (
+                instruction,
+                segments,
+                config,
+                context,
+                timeout_seconds,
+            ) = self._read_command_agent_request_payload()
+        except (KeyError, TypeError, ValueError) as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+
+        try:
+            result = run_command_agent(
+                instruction=instruction,
+                segments=segments,
+                config=config,
+                context=context,
                 timeout_seconds=timeout_seconds,
             )
         except AgentInputError as exc:
