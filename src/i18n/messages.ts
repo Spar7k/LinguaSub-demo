@@ -313,8 +313,19 @@ const zhMessages = {
     instructionPlaceholder: '帮我总结当前视频，生成适合课堂汇报的中文稿',
     runButton: '执行指令',
     generating: '正在生成...',
+    generatingDescription: 'AI 正在基于当前字幕生成内容，请稍候。',
     runFailed: '生成失败，请稍后重试。',
     apiConfigMissing: '请先在设置中配置可用的翻译模型 API。',
+    errorTitle: '生成失败',
+    errorSuggestionTitle: '你可以尝试：',
+    retry: '重试',
+    errorHints: {
+      backendUnavailable: '请确认 LinguaSub 后端已启动，或重新打开应用。',
+      routeMissing: '当前后端版本可能过旧，请重新构建后端 sidecar 或重启开发后端。',
+      apiConfig: '请到设置页检查翻译模型 API Key、Base URL 和模型名称。',
+      invalidJson: '模型返回格式不稳定，可以重试，或换用更稳定的模型。',
+      default: '请稍后重试，或检查设置页中的模型配置。',
+    },
     examplesTitle: '快捷指令',
     contextEyebrow: '项目上下文',
     contextTitle: '当前项目上下文',
@@ -1010,8 +1021,24 @@ const enMessages = {
       'Summarize the current video and turn it into a presentation script.',
     runButton: 'Run Command',
     generating: 'Generating...',
+    generatingDescription:
+      'AI is generating content from the current subtitles. Please wait.',
     runFailed: 'Generation failed. Please try again.',
     apiConfigMissing: 'Please configure a translation model API in Settings first.',
+    errorTitle: 'Generation failed',
+    errorSuggestionTitle: 'You can try:',
+    retry: 'Retry',
+    errorHints: {
+      backendUnavailable:
+        'Make sure the LinguaSub backend is running, or reopen the app.',
+      routeMissing:
+        'The backend may be out of date. Rebuild the backend sidecar or restart the dev backend.',
+      apiConfig:
+        'Check the translation model API key, Base URL, and model name in Settings.',
+      invalidJson:
+        'The model returned an unstable format. Retry, or switch to a more reliable model.',
+      default: 'Try again later, or check the model configuration in Settings.',
+    },
     examplesTitle: 'Quick prompts',
     contextEyebrow: 'Project context',
     contextTitle: 'Current project context',

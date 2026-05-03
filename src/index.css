@@ -2205,6 +2205,56 @@ ol {
   color: var(--color-danger);
 }
 
+.ai-workbench-loading-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(125, 146, 120, 0.26);
+  background: var(--color-accent-subtle);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ai-workbench-error-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(168, 95, 83, 0.28);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.ai-workbench-error-title {
+  display: block;
+  color: var(--color-danger);
+  font-size: 14px;
+}
+
+.ai-workbench-error-message,
+.ai-workbench-error-suggestion p {
+  margin: 6px 0 0;
+  color: var(--color-danger);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.ai-workbench-error-suggestion span {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.ai-workbench-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .ai-workbench-result-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.34fr);

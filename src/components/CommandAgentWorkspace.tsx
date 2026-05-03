@@ -48,6 +48,51 @@ function formatLanguageDirection(
   return fallback
 }
 
+type AiWorkbenchCopy = ReturnType<typeof useI18n>['m']['aiWorkbench']
+
+function getRunErrorHint(message: string, copy: AiWorkbenchCopy): string {
+  const normalizedMessage = message.toLowerCase()
+
+  if (
+    normalizedMessage.includes('could not reach') ||
+    normalizedMessage.includes('failed to fetch') ||
+    normalizedMessage.includes('networkerror')
+  ) {
+    return copy.errorHints.backendUnavailable
+  }
+
+  if (
+    normalizedMessage.includes('route not found') ||
+    normalizedMessage.includes('/agent/command') ||
+    normalizedMessage.includes('404')
+  ) {
+    return copy.errorHints.routeMissing
+  }
+
+  if (
+    normalizedMessage.includes('api key') ||
+    normalizedMessage.includes('base url') ||
+    normalizedMessage.includes('baseurl') ||
+    normalizedMessage.includes('model') ||
+    normalizedMessage.includes('provider') ||
+    normalizedMessage.includes('configuration') ||
+    normalizedMessage.includes('config')
+  ) {
+    return copy.errorHints.apiConfig
+  }
+
+  if (
+    normalizedMessage.includes('json') ||
+    normalizedMessage.includes('incomplete') ||
+    normalizedMessage.includes('invalid') ||
+    normalizedMessage.includes('parse')
+  ) {
+    return copy.errorHints.invalidJson
+  }
+
+  return copy.errorHints.default
+}
+
 export function CommandAgentWorkspace({
   segments,
   config,
@@ -84,6 +129,9 @@ export function CommandAgentWorkspace({
     commandAgentState.items.find(
       (item) => item.id === commandAgentState.activeItemId,
     ) ?? commandAgentState.items[0]
+  const trimmedInstruction = safeTrim(instruction)
+  const canRetry = Boolean(runError && trimmedInstruction && !isRunning)
+  const runErrorHint = runError ? getRunErrorHint(runError, copy) : ''
 
   function buildContextSummary(): CommandAgentContextSummary {
     return {
@@ -99,7 +147,9 @@ export function CommandAgentWorkspace({
   }
 
   async function handleRunCommand() {
-    const trimmedInstruction = safeTrim(instruction)
+    if (isRunning) {
+      return
+    }
 
     if (!hasSubtitles) {
       setAlertMessage(copy.noSubtitleRunError)
@@ -178,6 +228,11 @@ export function CommandAgentWorkspace({
                 rows={4}
               />
             </label>
+            {isRunning ? (
+              <p className="ai-workbench-loading-note" role="status">
+                {copy.generatingDescription}
+              </p>
+            ) : null}
             <div className="ai-workbench-command-card__footer">
               <p>{copy.instructionDescription}</p>
               <button
@@ -291,8 +346,32 @@ export function CommandAgentWorkspace({
             </div>
           ) : null}
           {runError ? (
-            <div className="ai-workbench-alert" role="alert">
-              {runError || copy.runFailed}
+            <div className="ai-workbench-error-card" role="alert">
+              <div>
+                <strong className="ai-workbench-error-title">
+                  {copy.errorTitle}
+                </strong>
+                <p className="ai-workbench-error-message">
+                  {runError || copy.runFailed}
+                </p>
+              </div>
+              <div className="ai-workbench-error-suggestion">
+                <span>{copy.errorSuggestionTitle}</span>
+                <p>{runErrorHint}</p>
+              </div>
+              {canRetry ? (
+                <div className="ai-workbench-error-actions">
+                  <button
+                    type="button"
+                    className="button button--secondary"
+                    onClick={() => {
+                      void handleRunCommand()
+                    }}
+                  >
+                    {copy.retry}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
