@@ -1,3 +1,5 @@
+import type { AppConfig, SubtitleSegment } from './models'
+
 export interface CommandAgentContextSummary {
   videoName?: string
   videoPath?: string
@@ -30,4 +32,20 @@ export interface CommandAgentSessionItem {
 export interface CommandAgentState {
   items: CommandAgentSessionItem[]
   activeItemId?: string
+}
+
+export interface CommandAgentRequestContext {
+  videoName?: string
+  videoPath?: string
+  sourceLanguage?: string
+  targetLanguage?: string
+  bilingualMode?: string
+}
+
+export interface CommandAgentRunRequest {
+  instruction: string
+  segments: SubtitleSegment[]
+  config: AppConfig
+  context?: CommandAgentRequestContext
+  timeoutSeconds?: number
 }
