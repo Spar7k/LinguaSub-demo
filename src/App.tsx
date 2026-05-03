@@ -57,7 +57,10 @@ import { loadTaskHistory, upsertTaskHistoryRecord } from './services/taskHistory
 import { parseSrt } from './services/srtService'
 import { transcribeMedia } from './services/transcriptionService'
 import { requestTranslation } from './services/translationService'
-import { exportBurnedSubtitleVideo } from './services/videoBurnExportService'
+import {
+  VideoBurnExportConnectionError,
+  exportBurnedSubtitleVideo,
+} from './services/videoBurnExportService'
 import { runVideoSubtitle } from './services/videoSubtitleService'
 import type { ExportFormat, ExportResult, WordExportMode } from './types/export'
 import type { ImportResult } from './types/import'
@@ -3090,7 +3093,11 @@ function App() {
       )
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : '导出带字幕视频失败，请稍后重试。'
+        error instanceof VideoBurnExportConnectionError
+          ? m.app.errors.videoExportConnectionInterrupted
+          : error instanceof Error
+            ? error.message
+            : '导出带字幕视频失败，请稍后重试。'
       startTransition(() => {
         setProcessError(message)
         setProjectState((current) => ({

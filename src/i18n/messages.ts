@@ -881,6 +881,8 @@ const enMessages = {
         'Please generate a content summary on the Preview page first.',
       staleContentSummaryToExport:
         'Subtitles have changed. Regenerate the content summary before exporting.',
+      videoExportConnectionInterrupted:
+        'The video export connection was interrupted. The export may still complete in the background. Please check the output folder, or retry if no video was created.',
       exportFailed: 'Export failed. Please try again.',
       startupCheckFailed: 'Could not load the startup environment check.',
       configLoadFailed: 'Could not load the translation config.',
@@ -1497,6 +1499,8 @@ const zhMessagesNormalized = {
         'Cloud transcription still needs API configuration. Open Settings and save the OpenAI Speech-to-Text base URL, API key, and model first.',
       translationApiSetupRequired:
         '默认翻译服务还没有完成 API 配置。请先到设置页填写并保存 provider、base URL、API Key 和 model。',
+      videoExportConnectionInterrupted:
+        '视频导出请求连接中断。导出任务可能仍在后台完成，请检查输出目录；如果没有生成视频，请查看后端日志或重试。',
     },
   },
   importPage: {

@@ -7,12 +7,13 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from .import_service import detect_file_type
 from .models import JsonModel, SubtitleSegment
@@ -31,12 +32,24 @@ DEFAULT_ASS_FONT = "Microsoft YaHei"
 SUPPORTED_VIDEO_BURN_MODES: set[str] = {"translated", "bilingual", "source"}
 DEFAULT_VIDEO_BURN_PROFILE: VideoBurnProfile = "landscape_long"
 SHORT_VIDEO_THRESHOLD_SECONDS = 180.0
+FFMPEG_DIAGNOSTIC_TEXT_LIMIT = 4000
+STALE_ASS_TEMP_DIR_MAX_AGE_SECONDS = 24 * 60 * 60
 
 LOGGER = logging.getLogger(__name__)
+LOGGER.addHandler(logging.NullHandler())
 
 
 class VideoBurnExportServiceError(RuntimeError):
     """Raised when burned-in video export cannot be completed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostics: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
 
 
 @dataclass(slots=True)
@@ -164,6 +177,65 @@ def _normalize_output_path(raw_path: str) -> Path:
 
 def _same_path(left: Path, right: Path) -> bool:
     return os.path.normcase(str(left.resolve())) == os.path.normcase(str(right.resolve()))
+
+
+def _tail_text(value: object, limit: int = FFMPEG_DIAGNOSTIC_TEXT_LIMIT) -> str:
+    text = "" if value is None else str(value)
+    if len(text) <= limit:
+        return text
+    return text[-limit:]
+
+
+def _get_file_size(path: Path) -> int | None:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
+def _build_ffmpeg_diagnostics(
+    *,
+    stage: str,
+    ffmpeg_binary: Path,
+    video_path: Path,
+    output_path: Path,
+    ass_path: Path | None = None,
+    temp_dir: Path | None = None,
+    command: list[str] | None = None,
+    returncode: int | None = None,
+    stdout: object = None,
+    stderr: object = None,
+    error: object = None,
+) -> dict[str, Any]:
+    output_size = _get_file_size(output_path) if output_path.exists() else None
+    diagnostics: dict[str, Any] = {
+        "stage": stage,
+        "ffmpegPath": str(ffmpeg_binary),
+        "inputVideoPath": str(video_path),
+        "outputPath": str(output_path),
+        "outputExists": output_path.exists(),
+        "outputSizeBytes": output_size,
+    }
+    if ass_path is not None:
+        diagnostics["assPath"] = str(ass_path)
+        diagnostics["assExists"] = ass_path.exists()
+    if temp_dir is not None:
+        diagnostics["assTempDir"] = str(temp_dir)
+        diagnostics["assTempDirExists"] = temp_dir.exists()
+    if command is not None:
+        diagnostics["ffmpegCommand"] = command
+    if returncode is not None:
+        diagnostics["returncode"] = returncode
+    stdout_tail = _tail_text(stdout)
+    stderr_tail = _tail_text(stderr)
+    if stdout_tail:
+        diagnostics["stdoutTail"] = stdout_tail
+    if stderr_tail:
+        diagnostics["stderrTail"] = stderr_tail
+    if error is not None:
+        diagnostics["errorType"] = error.__class__.__name__
+        diagnostics["error"] = str(error)
+    return diagnostics
 
 
 def _normalize_mode(mode: str | None) -> VideoBurnMode:
@@ -467,6 +539,7 @@ def build_ffmpeg_burn_command(
         str(ffmpeg_binary),
         "-y",
         "-hide_banner",
+        "-nostdin",
         "-loglevel",
         "error",
         "-i",
@@ -493,8 +566,8 @@ def build_ffmpeg_burn_command(
     ]
 
 
-def _run_ffmpeg_command(command: list[str], *, cwd: Path) -> None:
-    subprocess.run(
+def _run_ffmpeg_command(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         command,
         check=True,
         capture_output=True,
@@ -505,8 +578,30 @@ def _run_ffmpeg_command(command: list[str], *, cwd: Path) -> None:
     )
 
 
+def _cleanup_stale_temporary_ass_directories(parent: Path) -> None:
+    now = time.time()
+    try:
+        candidates = list(parent.glob(".linguasub-burn-*"))
+    except OSError as exc:
+        LOGGER.info("Could not scan for stale video burn temp directories: %s", exc)
+        return
+
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+        try:
+            age_seconds = now - candidate.stat().st_mtime
+        except OSError:
+            continue
+        if age_seconds < STALE_ASS_TEMP_DIR_MAX_AGE_SECONDS:
+            continue
+        LOGGER.info("Removing stale video burn temp directory: %s", candidate)
+        shutil.rmtree(candidate, ignore_errors=True)
+
+
 @contextmanager
 def _create_temporary_ass_directory(parent: Path) -> Iterator[Path]:
+    _cleanup_stale_temporary_ass_directories(parent)
     temp_dir = parent / f".linguasub-burn-{uuid.uuid4().hex}"
     temp_dir.mkdir(parents=False, exist_ok=False)
     try:
@@ -535,6 +630,15 @@ def burn_video_subtitles(
             "FFmpeg is not available. Reinstall LinguaSub with bundled ffmpeg.exe or configure a local FFmpeg binary."
         )
 
+    LOGGER.info(
+        "Starting video burn export videoPath=%s outputPath=%s mode=%s segmentCount=%s ffmpeg=%s",
+        source_video_path,
+        target_output_path,
+        normalized_mode,
+        len(segments),
+        ffmpeg_binary,
+    )
+
     profile = resolve_video_burn_profile(source_video_path, segments)
     ass_content = generate_ass_content(
         segments,
@@ -545,6 +649,12 @@ def burn_video_subtitles(
     with _create_temporary_ass_directory(target_output_path.parent) as temp_dir:
         ass_path = temp_dir / ASS_FILE_NAME
         ass_path.write_text(ass_content, encoding="utf-8-sig")
+        LOGGER.info(
+            "Prepared ASS subtitle script assPath=%s tempDir=%s bytes=%s",
+            ass_path,
+            temp_dir,
+            ass_path.stat().st_size,
+        )
 
         command = build_ffmpeg_burn_command(
             ffmpeg_binary=ffmpeg_binary,
@@ -552,19 +662,94 @@ def burn_video_subtitles(
             output_path=target_output_path,
             ass_file_name=ASS_FILE_NAME,
         )
+        LOGGER.info("Running FFmpeg command cwd=%s command=%s", temp_dir, command)
 
         try:
-            _run_ffmpeg_command(command, cwd=temp_dir)
+            ffmpeg_result = _run_ffmpeg_command(command, cwd=temp_dir)
         except subprocess.CalledProcessError as exc:
             message = (exc.stderr or exc.stdout or "").strip() or "Unknown FFmpeg error."
+            diagnostics = _build_ffmpeg_diagnostics(
+                stage="ffmpeg_failed",
+                ffmpeg_binary=ffmpeg_binary,
+                video_path=source_video_path,
+                output_path=target_output_path,
+                ass_path=ass_path,
+                temp_dir=temp_dir,
+                command=command,
+                returncode=exc.returncode,
+                stdout=exc.stdout,
+                stderr=exc.stderr,
+                error=exc,
+            )
+            LOGGER.error(
+                "FFmpeg video burn failed diagnostics=%s",
+                diagnostics,
+                exc_info=True,
+            )
             raise VideoBurnExportServiceError(
-                f"FFmpeg could not export the burned-in subtitle video. {message}"
+                f"FFmpeg could not export the burned-in subtitle video. {message}",
+                diagnostics=diagnostics,
             ) from exc
+        except OSError as exc:
+            diagnostics = _build_ffmpeg_diagnostics(
+                stage="ffmpeg_start_failed",
+                ffmpeg_binary=ffmpeg_binary,
+                video_path=source_video_path,
+                output_path=target_output_path,
+                ass_path=ass_path,
+                temp_dir=temp_dir,
+                command=command,
+                error=exc,
+            )
+            LOGGER.error(
+                "FFmpeg video burn could not start diagnostics=%s",
+                diagnostics,
+                exc_info=True,
+            )
+            raise VideoBurnExportServiceError(
+                f"FFmpeg could not start the burned-in subtitle video export. {exc}",
+                diagnostics=diagnostics,
+            ) from exc
+        else:
+            LOGGER.info(
+                "FFmpeg command finished returncode=%s stdoutTail=%s stderrTail=%s",
+                getattr(ffmpeg_result, "returncode", 0),
+                _tail_text(getattr(ffmpeg_result, "stdout", "")),
+                _tail_text(getattr(ffmpeg_result, "stderr", "")),
+            )
 
     if not target_output_path.exists():
-        raise VideoBurnExportServiceError(
-            f"FFmpeg finished but the output video was not created: {target_output_path}"
+        diagnostics = _build_ffmpeg_diagnostics(
+            stage="missing_output",
+            ffmpeg_binary=ffmpeg_binary,
+            video_path=source_video_path,
+            output_path=target_output_path,
         )
+        LOGGER.error("FFmpeg video burn output missing diagnostics=%s", diagnostics)
+        raise VideoBurnExportServiceError(
+            f"FFmpeg finished but the output video was not created: {target_output_path}",
+            diagnostics=diagnostics,
+        )
+
+    output_size = target_output_path.stat().st_size
+    if output_size <= 0:
+        diagnostics = _build_ffmpeg_diagnostics(
+            stage="empty_output",
+            ffmpeg_binary=ffmpeg_binary,
+            video_path=source_video_path,
+            output_path=target_output_path,
+        )
+        LOGGER.error("FFmpeg video burn output is empty diagnostics=%s", diagnostics)
+        raise VideoBurnExportServiceError(
+            f"FFmpeg finished but the output video is empty: {target_output_path}",
+            diagnostics=diagnostics,
+        )
+
+    LOGGER.info(
+        "Video burn export succeeded outputPath=%s outputSizeBytes=%s",
+        target_output_path,
+        output_size,
+    )
 
     return VideoBurnExportResult(
         outputPath=str(target_output_path),

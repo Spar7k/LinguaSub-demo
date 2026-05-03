@@ -92,6 +92,7 @@ class VideoBurnExportServiceTests(unittest.TestCase):
         command = captured["command"]
         self.assertIsInstance(command, list)
         self.assertEqual(run_ffmpeg.call_count, 1)
+        self.assertIn("-nostdin", command)
         self.assertIn("-vf", command)
         self.assertIn("subtitles=filename=subtitles.ass", command)
         self.assertIn("-c:v", command)
@@ -103,6 +104,7 @@ class VideoBurnExportServiceTests(unittest.TestCase):
         self.assertIn("-c:a", command)
         self.assertIn("aac", command)
         self.assertNotIn("-t", command)
+        self.assertNotIn("-to", command)
         self.assertEqual(result.outputPath, str(output_path.resolve()))
         self.assertEqual(result.fileName, "burned output.mp4")
         self.assertEqual(result.mode, "bilingual")
@@ -179,6 +181,9 @@ class VideoBurnExportServiceTests(unittest.TestCase):
 
         self.assertNotIn("-t", command)
         self.assertNotIn("-to", command)
+        self.assertIn("-nostdin", command)
+        self.assertIn(str(Path("D:/media/source video.mp4")), command)
+        self.assertIn(str(Path("D:/media/output video.mp4")), command)
 
     def test_generate_ass_content_writes_bilingual_text_on_two_lines(self) -> None:
         content = generate_ass_content(
@@ -343,8 +348,117 @@ class VideoBurnExportServiceTests(unittest.TestCase):
                 )
 
         self.assertIn("FFmpeg could not export", str(context.exception))
+        self.assertEqual(context.exception.diagnostics["stage"], "ffmpeg_failed")
+        self.assertEqual(context.exception.diagnostics["returncode"], 1)
+        self.assertEqual(context.exception.diagnostics["stderrTail"], "ffmpeg failed")
+        self.assertEqual(context.exception.diagnostics["outputPath"], str(output_path.resolve()))
+        self.assertIn("ffmpegPath", context.exception.diagnostics)
+        self.assertIn("assTempDir", context.exception.diagnostics)
         self.assertIn("cwd", captured)
         self.assertFalse(captured["cwd"].exists())
+
+    def test_burn_video_subtitles_rejects_missing_output_after_success(self) -> None:
+        video_path = FIXTURE_DIR / "sample-video.mp4"
+        output_dir = self.make_output_dir()
+        output_path = output_dir / "missing.mp4"
+        fake_ffmpeg = output_dir / "ffmpeg-bin"
+
+        with (
+            patch(
+                "backend.app.video_burn_export_service.resolve_ffmpeg_binary",
+                return_value=fake_ffmpeg,
+            ),
+            patch(
+                "backend.app.video_burn_export_service.resolve_ffprobe_binary",
+                return_value=None,
+            ),
+            patch(
+                "backend.app.video_burn_export_service._run_ffmpeg_command",
+                return_value=subprocess.CompletedProcess(args=[], returncode=0),
+            ),
+        ):
+            with self.assertRaises(VideoBurnExportServiceError) as context:
+                burn_video_subtitles(
+                    video_path=str(video_path),
+                    output_path=str(output_path),
+                    segments=[self.build_segment()],
+                    mode="bilingual",
+                )
+
+        self.assertIn("output video was not created", str(context.exception))
+        self.assertEqual(context.exception.diagnostics["stage"], "missing_output")
+        self.assertFalse(context.exception.diagnostics["outputExists"])
+
+    def test_burn_video_subtitles_rejects_empty_output_after_success(self) -> None:
+        video_path = FIXTURE_DIR / "sample-video.mp4"
+        output_dir = self.make_output_dir()
+        output_path = output_dir / "empty.mp4"
+        fake_ffmpeg = output_dir / "ffmpeg-bin"
+
+        def fake_run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+            output_path.write_bytes(b"")
+            return subprocess.CompletedProcess(args=command, returncode=0)
+
+        with (
+            patch(
+                "backend.app.video_burn_export_service.resolve_ffmpeg_binary",
+                return_value=fake_ffmpeg,
+            ),
+            patch(
+                "backend.app.video_burn_export_service.resolve_ffprobe_binary",
+                return_value=None,
+            ),
+            patch(
+                "backend.app.video_burn_export_service._run_ffmpeg_command",
+                side_effect=fake_run,
+            ),
+        ):
+            with self.assertRaises(VideoBurnExportServiceError) as context:
+                burn_video_subtitles(
+                    video_path=str(video_path),
+                    output_path=str(output_path),
+                    segments=[self.build_segment()],
+                    mode="bilingual",
+                )
+
+        self.assertIn("output video is empty", str(context.exception))
+        self.assertEqual(context.exception.diagnostics["stage"], "empty_output")
+        self.assertEqual(context.exception.diagnostics["outputSizeBytes"], 0)
+
+    def test_burn_video_subtitles_does_not_remove_non_linguasub_temp_dirs(self) -> None:
+        video_path = FIXTURE_DIR / "sample-video.mp4"
+        output_dir = self.make_output_dir()
+        output_path = output_dir / "safe.mp4"
+        unrelated_dir = output_dir / "manual-subtitles"
+        unrelated_dir.mkdir()
+        fake_ffmpeg = output_dir / "ffmpeg-bin"
+
+        def fake_run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+            output_path.write_bytes(b"fake-video")
+            return subprocess.CompletedProcess(args=command, returncode=0)
+
+        with (
+            patch(
+                "backend.app.video_burn_export_service.resolve_ffmpeg_binary",
+                return_value=fake_ffmpeg,
+            ),
+            patch(
+                "backend.app.video_burn_export_service.resolve_ffprobe_binary",
+                return_value=None,
+            ),
+            patch(
+                "backend.app.video_burn_export_service._run_ffmpeg_command",
+                side_effect=fake_run,
+            ),
+        ):
+            burn_video_subtitles(
+                video_path=str(video_path),
+                output_path=str(output_path),
+                segments=[self.build_segment()],
+                mode="bilingual",
+            )
+
+        self.assertTrue(unrelated_dir.exists())
 
 
 if __name__ == "__main__":

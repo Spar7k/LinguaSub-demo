@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import sys
 import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -51,8 +54,11 @@ from .speech_runtime_service import (
     SpeechModelStorageValidationError,
     SpeechRuntimeError,
     cleanup_downloaded_models,
+    resolve_ffmpeg_binary,
+    resolve_ffprobe_binary,
     start_model_download,
 )
+from .logging_service import configure_backend_logging
 from .translation_service import (
     TranslationServiceError,
     translate_segments,
@@ -71,6 +77,8 @@ from .task_history_service import (
     load_task_history,
     upsert_task_history_record,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class LinguaSubRequestHandler(BaseHTTPRequestHandler):
@@ -476,22 +484,48 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
     def _handle_video_subtitle_export_video(self) -> None:
         try:
             payload = self._read_json_body()
+            video_path = str(payload.get("videoPath", "") or "")
+            output_path = str(payload.get("outputPath", "") or "")
+            mode = str(payload.get("mode", "bilingual") or "bilingual")
             segments = [
                 SubtitleSegment.from_dict(item) for item in payload.get("segments", [])
             ]
+            LOGGER.info(
+                "Received /video-subtitle/export-video request videoPath=%s outputPath=%s mode=%s segmentCount=%s",
+                video_path,
+                output_path,
+                mode,
+                len(segments),
+            )
             result = burn_video_subtitles(
-                video_path=str(payload.get("videoPath", "") or ""),
-                output_path=str(payload.get("outputPath", "") or ""),
+                video_path=video_path,
+                output_path=output_path,
                 segments=segments,
-                mode=str(payload.get("mode", "bilingual") or "bilingual"),
+                mode=mode,
             )
         except VideoBurnExportServiceError as exc:
-            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            LOGGER.error(
+                "Video burn export failed error=%s diagnostics=%s",
+                exc,
+                exc.diagnostics,
+                exc_info=True,
+            )
+            self._send_error_json(
+                HTTPStatus.BAD_REQUEST,
+                str(exc),
+                diagnostics=exc.diagnostics,
+            )
             return
         except (KeyError, TypeError, ValueError) as exc:
+            LOGGER.error("Invalid video burn export request: %s", exc, exc_info=True)
             self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
             return
 
+        LOGGER.info(
+            "Completed /video-subtitle/export-video outputPath=%s count=%s",
+            result.outputPath,
+            result.count,
+        )
         self._send_json(result.to_dict())
 
     def _handle_speech_model_download(self) -> None:
@@ -790,21 +824,40 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
         body = b""
         if status != HTTPStatus.NO_CONTENT:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET,PUT,PATCH,POST,OPTIONS")
-        self.end_headers()
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET,PUT,PATCH,POST,OPTIONS")
+            self.end_headers()
 
-        if status != HTTPStatus.NO_CONTENT:
-            self.wfile.write(body)
+            if status != HTTPStatus.NO_CONTENT:
+                self.wfile.write(body)
+        except OSError as exc:
+            LOGGER.warning(
+                "Could not send HTTP response path=%s status=%s error=%s",
+                self.path,
+                status,
+                exc,
+                exc_info=True,
+            )
 
-    def _send_error_json(self, status: HTTPStatus, message: str) -> None:
-        self._send_json({"error": message}, status=status)
+    def _send_error_json(
+        self,
+        status: HTTPStatus,
+        message: str,
+        *,
+        diagnostics: dict[str, Any] | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {"error": message}
+        if diagnostics:
+            payload["diagnostics"] = diagnostics
+        self._send_json(payload, status=status)
 
     def _handle_unexpected_error(self, exc: Exception) -> None:
+        LOGGER.exception("Unhandled backend error while processing request path=%s", self.path)
         traceback.print_exc()
         self._send_error_json(
             HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -817,6 +870,19 @@ class LinguaSubRequestHandler(BaseHTTPRequestHandler):
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
+    log_path = configure_backend_logging()
+    LOGGER.info(
+        "LinguaSub backend starting host=%s port=%s cwd=%s executable=%s frozen=%s runtimeDir=%s ffmpeg=%s ffprobe=%s logPath=%s",
+        host,
+        port,
+        os.getcwd(),
+        sys.executable,
+        bool(getattr(sys, "frozen", False)),
+        os.getenv("LINGUASUB_RUNTIME_DIR"),
+        resolve_ffmpeg_binary(),
+        resolve_ffprobe_binary(),
+        log_path,
+    )
     server = ThreadingHTTPServer((host, port), LinguaSubRequestHandler)
     print(f"LinguaSub backend listening on http://{host}:{port}")
     try:
@@ -824,4 +890,5 @@ def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        LOGGER.info("LinguaSub backend stopping host=%s port=%s", host, port)
         server.server_close()
