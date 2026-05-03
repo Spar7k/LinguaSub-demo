@@ -3744,6 +3744,7 @@ function App() {
           {resolvedWorkspace === 'aiWorkbench' ? (
             <CommandAgentWorkspace
               segments={projectState.segments}
+              config={config}
               videoName={getCurrentVideoName(importResult, projectState)}
               videoPath={getCurrentVideoPath(importResult, projectState)}
               sourceLanguage={projectState.segments[0]?.sourceLanguage}

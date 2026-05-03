@@ -1,17 +1,19 @@
 import { useState } from 'react'
 
 import { useI18n } from '../i18n/useI18n'
+import { runCommandAgent } from '../services/commandAgentService'
 import type {
   CommandAgentContextSummary,
   CommandAgentSessionItem,
   CommandAgentState,
 } from '../types/commandAgent'
-import type { OutputMode, SubtitleSegment } from '../types/models'
+import type { AppConfig, OutputMode, SubtitleSegment } from '../types/models'
 import { safeTrim } from '../utils/config'
 import { SectionCard } from './SectionCard'
 
 type CommandAgentWorkspaceProps = {
   segments: SubtitleSegment[]
+  config: AppConfig | null
   videoName?: string | null
   videoPath?: string | null
   sourceLanguage?: string | null
@@ -48,6 +50,7 @@ function formatLanguageDirection(
 
 export function CommandAgentWorkspace({
   segments,
+  config,
   videoName,
   videoPath,
   sourceLanguage,
@@ -67,6 +70,8 @@ export function CommandAgentWorkspace({
   ).length
   const [instruction, setInstruction] = useState('')
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
+  const [isRunning, setIsRunning] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
   const translatedRate =
     subtitleCount > 0 ? Math.round((translatedCount / subtitleCount) * 100) : 0
   const languageDirection = formatLanguageDirection(
@@ -93,34 +98,59 @@ export function CommandAgentWorkspace({
     }
   }
 
-  function handleRunCommand() {
+  async function handleRunCommand() {
     const trimmedInstruction = safeTrim(instruction)
 
     if (!hasSubtitles) {
       setAlertMessage(copy.noSubtitleRunError)
+      setRunError(null)
       return
     }
 
     if (!trimmedInstruction) {
       setAlertMessage(copy.emptyInstruction)
+      setRunError(null)
+      return
+    }
+
+    if (!config) {
+      setAlertMessage(copy.apiConfigMissing)
+      setRunError(null)
       return
     }
 
     setAlertMessage(null)
-    onSaveCommandAgentResult({
-      id: `command-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      instruction: trimmedInstruction,
-      createdAt: new Date().toISOString(),
-      contextSummary: buildContextSummary(),
-      segmentSignature,
-      result: {
-        intent: 'mock_command',
-        title: copy.mockResultTitle,
-        summary: copy.mockResultSummary,
-        content: copy.mockOutput,
-        suggestedActions: [...copy.mockSuggestedActions],
-      },
-    })
+    setRunError(null)
+    setIsRunning(true)
+
+    try {
+      const result = await runCommandAgent({
+        instruction: trimmedInstruction,
+        segments,
+        config,
+        context: {
+          videoName: safeTrim(videoName ?? '') || undefined,
+          videoPath: safeTrim(videoPath ?? '') || undefined,
+          sourceLanguage: safeTrim(sourceLanguage ?? '') || undefined,
+          targetLanguage: safeTrim(targetLanguage ?? '') || undefined,
+          bilingualMode: bilingualMode ?? undefined,
+        },
+        timeoutSeconds: 60,
+      })
+
+      onSaveCommandAgentResult({
+        id: `command-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        instruction: trimmedInstruction,
+        createdAt: new Date().toISOString(),
+        contextSummary: buildContextSummary(),
+        segmentSignature,
+        result,
+      })
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : copy.runFailed)
+    } finally {
+      setIsRunning(false)
+    }
   }
 
   return (
@@ -142,6 +172,7 @@ export function CommandAgentWorkspace({
                 onChange={(event) => {
                   setInstruction(event.target.value)
                   setAlertMessage(null)
+                  setRunError(null)
                 }}
                 placeholder={copy.instructionPlaceholder}
                 rows={4}
@@ -152,9 +183,12 @@ export function CommandAgentWorkspace({
               <button
                 type="button"
                 className="button button--primary"
-                onClick={handleRunCommand}
+                disabled={isRunning}
+                onClick={() => {
+                  void handleRunCommand()
+                }}
               >
-                {copy.runButton}
+                {isRunning ? copy.generating : copy.runButton}
               </button>
             </div>
           </div>
@@ -170,6 +204,7 @@ export function CommandAgentWorkspace({
                   onClick={() => {
                     setInstruction(example.prompt)
                     setAlertMessage(null)
+                    setRunError(null)
                   }}
                 >
                   <strong>{example.title}</strong>
@@ -253,6 +288,11 @@ export function CommandAgentWorkspace({
           {alertMessage ? (
             <div className="ai-workbench-alert" role="alert">
               {alertMessage}
+            </div>
+          ) : null}
+          {runError ? (
+            <div className="ai-workbench-alert" role="alert">
+              {runError || copy.runFailed}
             </div>
           ) : null}
 
