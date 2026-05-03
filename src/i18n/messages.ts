@@ -304,12 +304,9 @@ const zhMessages = {
     eyebrow: 'AI 工作台',
     title: 'AI 工作台',
     subtitle: '输入一句话，让 LinguaSub 基于当前字幕生成总结、学习笔记、汇报稿或文案。',
-    commandInputLabel: '自然语言指令',
-    commandInputComingSoon: '指令输入将在下一步接入',
-    commandInputDescription:
-      '这里将成为 Command Agent 的主入口。本轮先展示当前项目上下文和后续能力占位。',
+    commandInputComingSoon: '自然语言指令',
     instructionTitle: '自然语言指令',
-    instructionDescription: '本轮先生成本地占位结果，下一步会接入真实 Command Agent。',
+    instructionDescription: '输入一句自然语言指令，AI 会基于当前字幕生成结构化内容。',
     instructionPlaceholder: '帮我总结当前视频，生成适合课堂汇报的中文稿',
     runButton: '执行指令',
     generating: '正在生成...',
@@ -341,21 +338,19 @@ const zhMessages = {
     notConfigured: '未配置',
     emptyTitle: '暂无字幕上下文',
     emptyDescription: '请先导入视频并完成字幕识别，或导入 SRT 字幕文件。',
-    comingSoonEyebrow: '后续能力',
-    comingSoonTitle: '即将接入的能力',
-    comingSoonDescription: '第一版 AI 工作台会先围绕字幕内容生成可复制、可导出的文本结果。',
+    comingSoonEyebrow: '可尝试能力',
+    comingSoonTitle: '后续增强',
+    comingSoonDescription: '这些方向已经可以通过当前 Command Agent 尝试，导出等工作流会继续增强。',
     comingSoonItems: [
-      '自然语言指令输入',
-      '学习笔记生成',
-      '课堂汇报稿生成',
-      '小红书文案生成',
-      'Word 导出',
+      '生成学习笔记',
+      '生成课堂汇报稿',
+      '生成社媒文案',
+      '后续支持导出 Word',
     ],
-    resultEyebrow: '本地占位',
+    resultEyebrow: 'Command Agent 结果',
     resultTitle: '指令结果',
     resultDescription: '这里会展示任务理解、生成内容和建议下一步操作。',
-    resultPlaceholder: '输入指令并点击执行后，这里会先显示本地占位结果。',
-    latestResult: '最近一次结果',
+    resultPlaceholder: '执行指令后，这里会显示生成结果。',
     historyTitle: '最近结果',
     noHistory: '暂无结果，输入指令后会显示在这里。',
     historyInstructionFallback: '未命名指令',
@@ -363,15 +358,11 @@ const zhMessages = {
     recentResult: '历史记录',
     createdAt: (time: string) => `生成时间：${time}`,
     understoodTask: '任务理解',
-    mockResultTitle: 'AI 工作台预览',
     summaryTitle: '摘要',
-    mockResultSummary: '已理解你的任务，但真实 Agent 接口将在下一步接入。',
     outputTitle: '输出内容',
     suggestedActionsTitle: '建议下一步操作',
     emptyInstruction: '请输入你想让 LinguaSub 完成的任务。',
     noSubtitleRunError: '请先导入视频并完成字幕识别，或导入 SRT 字幕文件。',
-    mockOutput:
-      'Command Agent 接口将在下一步接入。未来这里会基于当前字幕生成真实内容。',
     examplePrompts: [
       {
         title: '生成课堂汇报稿',
@@ -392,11 +383,6 @@ const zhMessages = {
         prompt:
           '把当前视频内容压缩成一份 3 分钟中文口播稿，要求语言自然、适合直接朗读。',
       },
-    ],
-    mockSuggestedActions: [
-      '接入 /agent/command',
-      '生成 Word 文档',
-      '继续优化输出风格',
     ],
   },
   importPage: {
@@ -1010,13 +996,10 @@ const enMessages = {
     title: 'AI Workbench',
     subtitle:
       'Use one sentence to ask LinguaSub to turn the current subtitles into summaries, study notes, presentation drafts, or social copy.',
-    commandInputLabel: 'Natural language command',
-    commandInputComingSoon: 'Command input will be connected next',
-    commandInputDescription:
-      'This will become the main Command Agent entry. For now, it shows the current project context and planned capabilities.',
+    commandInputComingSoon: 'Natural-language commands',
     instructionTitle: 'Natural language command',
     instructionDescription:
-      'This version shows a local placeholder result. The real Command Agent will be connected next.',
+      'Enter a natural-language command and AI will generate structured content from the current subtitles.',
     instructionPlaceholder:
       'Summarize the current video and turn it into a presentation script.',
     runButton: 'Run Command',
@@ -1056,24 +1039,21 @@ const enMessages = {
     emptyTitle: 'No subtitle context yet',
     emptyDescription:
       'Please import a video and complete transcription, or import an SRT subtitle file first.',
-    comingSoonEyebrow: 'Coming soon',
-    comingSoonTitle: 'Planned capabilities',
+    comingSoonEyebrow: 'Try these capabilities',
+    comingSoonTitle: 'Upcoming enhancements',
     comingSoonDescription:
-      'The first AI Workbench version will focus on text results that can be copied and exported.',
+      'You can already try these directions with the current Command Agent, and export workflows will continue to improve.',
     comingSoonItems: [
-      'Natural language command input',
-      'Study note generation',
-      'Class presentation draft generation',
-      'Xiaohongshu-style copy generation',
-      'Word export',
+      'Generate study notes',
+      'Create presentation scripts',
+      'Draft social media copy',
+      'Word export support coming later',
     ],
-    resultEyebrow: 'Local placeholder',
+    resultEyebrow: 'Command Agent Result',
     resultTitle: 'Command result',
     resultDescription:
       'This area will show task understanding, generated content, and suggested next actions.',
-    resultPlaceholder:
-      'Enter a command and run it to show a local placeholder result here.',
-    latestResult: 'Latest result',
+    resultPlaceholder: 'Run a command to show the generated result here.',
     historyTitle: 'Recent results',
     noHistory: 'No results yet. Run a command to see it here.',
     historyInstructionFallback: 'Untitled command',
@@ -1081,17 +1061,12 @@ const enMessages = {
     recentResult: 'History',
     createdAt: (time: string) => `Created at: ${time}`,
     understoodTask: 'Task understanding',
-    mockResultTitle: 'AI Workbench Preview',
     summaryTitle: 'Summary',
-    mockResultSummary:
-      'LinguaSub understood your task, and the real Agent endpoint will be connected next.',
     outputTitle: 'Output',
     suggestedActionsTitle: 'Suggested next actions',
     emptyInstruction: 'Please enter what you want LinguaSub to do.',
     noSubtitleRunError:
       'Please import a video and complete transcription, or import an SRT subtitle file first.',
-    mockOutput:
-      'The Command Agent endpoint will be connected next. Future results will be generated from the current subtitles.',
     examplePrompts: [
       {
         title: 'Create a presentation script',
@@ -1113,11 +1088,6 @@ const enMessages = {
         prompt:
           'Condense the current video into a natural 3-minute speech script suitable for reading aloud.',
       },
-    ],
-    mockSuggestedActions: [
-      'Connect /agent/command',
-      'Generate a Word document',
-      'Keep refining the output style',
     ],
   },
   importPage: {

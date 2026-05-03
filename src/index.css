@@ -2027,7 +2027,7 @@ ol {
   color: var(--color-muted);
 }
 
-.ai-workbench-hero .section-card__description {
+.ai-workbench-hero .section-card__desc {
   max-width: 760px;
 }
 
@@ -2043,26 +2043,10 @@ ol {
   color: var(--text-muted);
 }
 
-.ai-workbench-placeholder {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  border-radius: var(--radius-lg);
-  border: 1px dashed rgba(125, 146, 120, 0.42);
-  background: var(--color-accent-subtle);
-}
-
-.ai-workbench-placeholder span,
 .ai-workbench-path {
   color: var(--text-soft);
   font-size: 12px;
   font-weight: 700;
-}
-
-.ai-workbench-placeholder strong {
-  color: var(--text-primary);
-  font-size: 18px;
 }
 
 .ai-workbench-command-card {
