@@ -276,9 +276,13 @@ export function CommandAgentWorkspace({
     activeItem?.contextSummary.sourceFilePath ?? '',
   )
   const activeExportWordResult =
-    exportWordResult?.itemId === activeItem?.id ? exportWordResult : null
+    activeItem && exportWordResult?.itemId === activeItem.id
+      ? exportWordResult
+      : null
   const activeExportWordError =
-    exportWordError?.itemId === activeItem?.id ? exportWordError.message : null
+    activeItem && exportWordError?.itemId === activeItem.id
+      ? exportWordError.message
+      : null
   const canExportWord = Boolean(activeItem && activeSourceFilePath && !isExportingWord)
 
   useEffect(() => {
